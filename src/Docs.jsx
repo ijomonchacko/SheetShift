@@ -1,6 +1,8 @@
 import React, { useEffect } from "react";
 import { linkTo } from "./Root";
 import Footer from "./components/Footer";
+import { initReveal } from "./lib/reveal.js";
+import SiteNav from "./components/SiteNav.jsx";
 
 const SECTIONS = [
   { id: "quick-start", label: "Quick start" },
@@ -20,6 +22,8 @@ const SECTIONS = [
 ];
 
 export default function Docs() {
+  useEffect(() => initReveal(), []);
+
   // Honor a #hash deep-link on first load.
   useEffect(() => {
     const hash = window.location.hash.slice(1);
@@ -29,28 +33,8 @@ export default function Docs() {
   }, []);
 
   return (
-    <div className="docs-page">
-      <nav className="nav">
-        <div className="nav-inner">
-          <a className="brand" href="/" onClick={linkTo("/")}>
-            <span className="brand-mark" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8" />
-                <path d="M12 2v20M2 12h20" stroke="currentColor" strokeWidth="1.2" opacity="0.35" />
-                <circle cx="12" cy="12" r="4.2" fill="currentColor" />
-              </svg>
-            </span>
-            SheetShift
-          </a>
-          <div className="nav-links">
-            <a href="/" onClick={linkTo("/")}>Home</a>
-            <a href="/docs" onClick={linkTo("/docs")} aria-current="page" className="is-current">Docs</a>
-          </div>
-          <a className="btn btn-primary btn-sm" href="/app" onClick={linkTo("/app")}>
-            Open the app
-          </a>
-        </div>
-      </nav>
+    <div className="docs-page ss-legacy">
+      <SiteNav />
 
       <div className="docs-layout">
         {/* ---------- sidebar ---------- */}

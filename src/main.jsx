@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import Root from "./Root";
 import { initTheme } from "./lib/theme.js";
 import "./styles.css";
+import "./site.css";
 
 initTheme();
 

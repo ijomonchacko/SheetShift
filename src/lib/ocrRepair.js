@@ -138,16 +138,18 @@ export function mergeSplitTokens(pageBoxes, gapFactor = 1.0) {
   const out = [];
   let cur = { ...pageBoxes[0] };
 
+  // Chord suffixes are often drawn as smaller, superscript-shifted runs
+  // ("E" + "ˢᵘˢ²"), so row matching must tolerate partial vertical overlap.
   const sameRow = (a, b) => {
     const overlap = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
-    return overlap > 0.5 * Math.min(a.y1 - a.y0, b.y1 - b.y0);
+    return overlap > 0.3 * Math.min(a.y1 - a.y0, b.y1 - b.y0);
   };
 
   for (let i = 1; i < pageBoxes.length; i++) {
     const next = pageBoxes[i];
     const h = Math.max(cur.y1 - cur.y0, next.y1 - next.y0);
     const gap = next.x0 - cur.x1;
-    const closeEnough = sameRow(cur, next) && gap >= -h * 0.5 && gap <= h * gapFactor;
+    const closeEnough = sameRow(cur, next) && gap >= -h && gap <= h * gapFactor;
 
     if (closeEnough) {
       const combined = cleanOcrToken(cur.text + next.text);

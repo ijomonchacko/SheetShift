@@ -8,6 +8,28 @@ const row = (y, parts) => parts.map(([text, x0, w]) => ({
 const texts = (boxes) => boxes.map((b) => b.text);
 
 export const tests = [
+  ["superscript suffix runs merge (notation-software style)", () => {
+    // "E" tall root + smaller raised "sus2" run, as MuseScore draws them
+    const boxes = [
+      { text: "E", x0: 60, x1: 69, y0: 600, y1: 613, pageIndex: 0, confidence: 100, method: "text" },
+      { text: "sus2", x0: 69.5, x1: 88, y0: 605, y1: 613, pageIndex: 0, confidence: 100, method: "text" },
+    ];
+    assert.deepEqual(texts(mergeSplitTokens(boxes)), ["Esus2"]);
+  }],
+  ["A + m and A + M merge", () => {
+    const am = row(600, [["A", 60, 9], ["m", 70, 8]]);
+    assert.deepEqual(texts(mergeSplitTokens(am)), ["Am"]);
+    const aM = row(600, [["A", 60, 9], ["M", 70, 8]]);
+    assert.deepEqual(texts(mergeSplitTokens(aM)), ["AM"]);
+  }],
+  ["F# + m with slight overlap merges", () => {
+    const boxes = [
+      { text: "F#", x0: 60, x1: 74, y0: 600, y1: 613, pageIndex: 0, confidence: 100, method: "text" },
+      { text: "m", x0: 73, x1: 82, y0: 602, y1: 611, pageIndex: 0, confidence: 100, method: "text" },
+    ];
+    assert.deepEqual(texts(mergeSplitTokens(boxes)), ["F#m"]);
+  }],
+
   ["F # m fragments merge into F#m", () => {
     const boxes = row(600, [["F", 60, 8], ["#", 70, 6], ["m", 78, 9]]);
     assert.deepEqual(texts(mergeSplitTokens(boxes)), ["F#m"]);

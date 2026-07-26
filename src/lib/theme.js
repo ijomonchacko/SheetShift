@@ -1,21 +1,27 @@
-// Dark mode: explicit user choice wins (persisted in localStorage); with no
-// choice made, styles.css follows the OS preference via media query.
+// Theme resolution, in priority order:
+//   1. an explicit choice the visitor made (persisted in localStorage)
+//   2. dark — the site's own default, regardless of OS preference
+//
+// index.html runs the same resolution in a blocking inline script so the
+// first paint is already correct; this module keeps it in sync afterwards.
 
 const KEY = "sheetshift-theme";
 
-export function initTheme() {
+function saved() {
   try {
-    const saved = localStorage.getItem(KEY);
-    if (saved === "dark" || saved === "light") {
-      document.documentElement.dataset.theme = saved;
-    }
-  } catch { /* private browsing */ }
+    const v = localStorage.getItem(KEY);
+    return v === "dark" || v === "light" ? v : null;
+  } catch {
+    return null; // private browsing
+  }
+}
+
+export function initTheme() {
+  document.documentElement.dataset.theme = saved() || "dark";
 }
 
 export function currentTheme() {
-  const explicit = document.documentElement.dataset.theme;
-  if (explicit) return explicit;
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
 }
 
 export function toggleTheme() {

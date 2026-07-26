@@ -78,10 +78,12 @@ export async function detectChords(arrayBuffer, chordColors, opts = {}) {
         topMarginPx,
       });
       if (textLength >= 20) {
-        // This page has a real text layer — trust it entirely.
-        for (const it of items) {
-          allBoxes.push(toPdfBox(it, it.text, 100, "text"));
-        }
+        // This page has a real text layer — trust it entirely. Notation
+        // software often draws one chord as SEPARATE text runs ("E" +
+        // "sus2", "A" + "m", "F#" + "m"), so the same fragment-merging
+        // used for OCR applies here too.
+        const pageBoxes = items.map((it) => toPdfBox(it, it.text, 100, "text"));
+        allBoxes.push(...mergeSplitTokens(pageBoxes, 1.2));
         continue;
       }
       // else: scanned/flattened page → OCR below.

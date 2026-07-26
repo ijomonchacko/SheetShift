@@ -1,59 +1,70 @@
 import React from "react";
 import { linkTo } from "../Root";
+import { Logo } from "./art/Marks.jsx";
 
-const LogoMark = () => (
-  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8" />
-    <path d="M12 2v20M2 12h20" stroke="currentColor" strokeWidth="1.2" opacity="0.35" />
-    <circle cx="12" cy="12" r="4.2" fill="currentColor" />
-  </svg>
-);
+const COLS = [
+  {
+    h: "Product",
+    links: [
+      ["Open the app", "/app"],
+      ["How it works", "/#how"],
+      ["Capabilities", "/#features"],
+      ["FAQ", "/#faq"],
+    ],
+  },
+  {
+    h: "Documentation",
+    links: [
+      ["Overview", "/docs"],
+      ["Quick start", "/docs#quick-start"],
+      ["Troubleshooting", "/docs#troubleshooting"],
+      ["Privacy", "/docs#privacy"],
+    ],
+  },
+  {
+    h: "Good to know",
+    links: [
+      ["How detection works", "/docs#how-detection-works"],
+      ["Fonts & styling", "/docs#fonts"],
+      ["Limitations", "/docs#limitations"],
+    ],
+  },
+];
 
 export default function Footer() {
   return (
-    <footer className="footer">
-      <div className="footer-grid">
-        <div className="footer-brandcol">
-          <a className="brand" href="/" onClick={linkTo("/")}>
-            <span className="brand-mark"><LogoMark /></span>
+    <footer className="ss-foot">
+      <div className="ss-wrap ss-foot-grid">
+        <div>
+          <a className="ss-brand" href="/" onClick={linkTo("/")}>
+            <Logo />
             SheetShift
           </a>
-          <p className="footer-blurb">
+          <p className="ss-foot-blurb">
             Change the key of any PDF chord chart in seconds — free, private,
-            and entirely in your browser.
+            and entirely inside your browser.
           </p>
-          <span className="footer-badge">
-            <span className="pill-dot" /> Files never leave your device
-          </span>
+          <span className="ss-foot-badge"><i />Files never leave your device</span>
         </div>
 
-        <nav className="footer-col" aria-label="Product">
-          <h4>Product</h4>
-          <a href="/app" onClick={linkTo("/app")}>Open the app</a>
-          <a href="/#how">How it works</a>
-          <a href="/#features">Features</a>
-          <a href="/#faq">FAQ</a>
-        </nav>
-
-        <nav className="footer-col" aria-label="Resources">
-          <h4>Resources</h4>
-          <a href="/docs" onClick={linkTo("/docs")}>Documentation</a>
-          <a href="/docs#quick-start" onClick={linkTo("/docs#quick-start")}>Quick start</a>
-          <a href="/docs#troubleshooting" onClick={linkTo("/docs#troubleshooting")}>Troubleshooting</a>
-          <a href="/docs#privacy" onClick={linkTo("/docs#privacy")}>Privacy</a>
-        </nav>
-
-        <nav className="footer-col" aria-label="Good to know">
-          <h4>Good to know</h4>
-          <a href="/docs#how-detection-works" onClick={linkTo("/docs#how-detection-works")}>How detection works</a>
-          <a href="/docs#fonts" onClick={linkTo("/docs#fonts")}>Fonts &amp; styling</a>
-          <a href="/docs#limitations" onClick={linkTo("/docs#limitations")}>Limitations</a>
-        </nav>
+        {COLS.map((c) => (
+          <div className="ss-foot-col" key={c.h}>
+            <h4>{c.h}</h4>
+            <nav aria-label={c.h}>
+              {c.links.map(([label, href]) => (
+                <a key={href} href={href}
+                   onClick={href.startsWith("/#") ? undefined : linkTo(href)}>
+                  {label}
+                </a>
+              ))}
+            </nav>
+          </div>
+        ))}
       </div>
 
-      <div className="footer-bottom">
-        <p>© {new Date().getFullYear()} SheetShift · sheetshift.vercel.app</p>
-        <p>Chord detection uses OCR on the rendered page — always review before use.</p>
+      <div className="ss-wrap ss-foot-bar">
+        <span>© {new Date().getFullYear()} SheetShift</span>
+        <span>Scanned charts are read with OCR — always review before you play.</span>
       </div>
     </footer>
   );
