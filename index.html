@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<!-- Primary SEO -->
+<title>SheetShift — Transpose PDF Chord Charts Online, Free &amp; Private</title>
+<meta name="description" content="Change the key of any PDF chord chart or lead sheet in seconds. Pick keys on a circle of fifths, review every detected chord, and download a transposed PDF — free, no sign-up, 100% in your browser." />
+<meta name="keywords" content="transpose chord chart, transpose PDF, chord transposer, change key of song, lead sheet transposition, circle of fifths, transpose sheet music online, free chord chart transposer, MuseScore transpose PDF, capo key change" />
+<meta name="author" content="SheetShift" />
+<meta name="robots" content="index, follow" />
+<link rel="canonical" href="https://sheetshift.vercel.app/" />
+<meta name="theme-color" content="#4f46e5" />
+
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="SheetShift" />
+<meta property="og:title" content="SheetShift — Transpose PDF Chord Charts Online" />
+<meta property="og:description" content="Drop in a PDF chord chart, pick a new key on the circle of fifths, and download a transposed copy — free, private, entirely in your browser." />
+<meta property="og:url" content="https://sheetshift.vercel.app/" />
+<meta property="og:image" content="https://sheetshift.vercel.app/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="SheetShift — change the key of any chord chart in seconds" />
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="SheetShift — Transpose PDF Chord Charts Online" />
+<meta name="twitter:description" content="Change the key of any PDF chord chart in seconds. Free, no sign-up, files never leave your device." />
+<meta name="twitter:image" content="https://sheetshift.vercel.app/og.png" />
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='%234f46e5' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='4.5' fill='%234f46e5'/%3E%3C/svg%3E" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="apple-touch-icon" href="/icon-192.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- Structured data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "SheetShift",
+  "url": "https://sheetshift.vercel.app/",
+  "applicationCategory": "MusicApplication",
+  "operatingSystem": "Any (web browser)",
+  "browserRequirements": "Requires JavaScript",
+  "description": "Free online tool that transposes PDF chord charts and lead sheets to a new key entirely in the browser. Files are never uploaded to a server.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "featureList": [
+    "Circle-of-fifths key selection",
+    "Transpose by key or by semitone interval",
+    "OCR chord detection with editable review step",
+    "Color-matched, font-matched PDF output",
+    "Runs 100% client-side — private by design"
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is my PDF uploaded anywhere?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. Rendering, OCR chord detection, and PDF generation all run in your browser. Files never leave your device." }
+    },
+    {
+      "@type": "Question",
+      "name": "What kinds of PDFs work best?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Chord charts and lead sheets exported from notation software such as MuseScore, Finale, or Sibelius, where chord symbols are printed in a distinct color. Scanned charts work too but need closer review." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does it change my chart's layout?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. The original PDF is kept intact — old chord symbols are covered and new ones are drawn in the same spot, size, and color, so lyrics and spacing stay exactly where they were." }
+    },
+    {
+      "@type": "Question",
+      "name": "What does SheetShift cost?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Nothing. SheetShift is free, with no account and no limits." }
+    }
+  ]
+}
+</script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>

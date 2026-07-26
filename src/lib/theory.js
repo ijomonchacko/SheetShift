@@ -1,0 +1,191 @@
+// Direct port of chordtranspose/theory.py. See that file for the reference
+// implementation and comments -- kept in sync intentionally.
+//
+// Extended beyond the Python version with:
+//   - slash-bass transposition (C/G +2 -> D/A, not D/G)
+//   - isLikelyChord(): a suffix grammar so OCR garbage that happens to start
+//     with A-G (e.g. "F5u52" for "Fsus2") is flagged for review instead of
+//     silently passing through.
+
+const SHARP_NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+const FLAT_NAMES = ["C", "D♭", "D", "E♭", "E", "F", "G♭", "G", "A♭", "A", "B♭", "B"];
+const NATURAL_INDEX = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+const CHORD_RE = /^([A-Ga-g])([♯♭#b]?)(.*)$/;
+
+const KEY_USES_FLATS = {
+  C: false, G: false, D: false, A: false, E: false, B: false,
+  "F♯": false, "C♯": false,
+  F: true, "B♭": true, "E♭": true, "A♭": true, "D♭": true, "G♭": true,
+  Bb: true, Eb: true, Ab: true, Db: true, Gb: true,
+  Am: false, Em: false, Bm: false, "F♯m": false, "C♯m": false,
+  "G♯m": false, "D♯m": false, "A♯m": false,
+  Dm: true, Gm: true, Cm: true, Fm: true, "B♭m": true, "E♭m": true,
+  Bbm: true, Ebm: true,
+};
+
+export function parseChord(token) {
+  const m = CHORD_RE.exec((token || "").trim());
+  if (!m) return null;
+  const [, letter, accidental, suffix] = m;
+  let idx = NATURAL_INDEX[letter.toUpperCase()];
+  if (accidental === "♯" || accidental === "#") idx += 1;
+  else if (accidental === "♭" || accidental === "b") idx -= 1;
+  return { letter: letter.toUpperCase(), accidental, suffix, semitone: ((idx % 12) + 12) % 12 };
+}
+
+/** Transpose one pitch name (letter + optional accidental) by semitones. */
+function transposeNote(note, semitones, preferFlats) {
+  const parsed = parseChord(note);
+  if (!parsed) return note;
+  const newIndex = ((parsed.semitone + semitones) % 12 + 12) % 12;
+  const table = preferFlats ? FLAT_NAMES : SHARP_NAMES;
+  return table[newIndex];
+}
+
+export function transposeChord(token, semitones, preferFlats = false) {
+  const parsed = parseChord(token);
+  if (!parsed) return token;
+
+  // Transpose a slash bass note too: C/G +2 should become D/A, not D/G.
+  let suffix = parsed.suffix;
+  const slash = /^(.*)\/([A-Ga-g][♯♭#b]?)$/.exec(suffix);
+  if (slash) {
+    suffix = slash[1] + "/" + transposeNote(slash[2], semitones, preferFlats);
+  }
+
+  const root = transposeNote(
+    parsed.letter + (parsed.accidental || ""),
+    semitones,
+    preferFlats
+  );
+  return root + suffix;
+}
+
+function stripKeyQuality(key) {
+  key = key.trim();
+  for (const suffix of ["minor", "major", "min", "maj", "m"]) {
+    if (key.toLowerCase().endsWith(suffix) && key.length > suffix.length) {
+      return key.slice(0, key.length - suffix.length);
+    }
+  }
+  return key;
+}
+
+export function semitonesBetween(fromKey, toKey) {
+  const a = parseChord(stripKeyQuality(fromKey));
+  const b = parseChord(stripKeyQuality(toKey));
+  if (!a || !b) throw new Error(`Could not parse key names: ${fromKey} -> ${toKey}`);
+  let diff = ((b.semitone - a.semitone) % 12 + 12) % 12;
+  if (diff > 6) diff -= 12;
+  return diff;
+}
+
+export function keyPrefersFlats(key) {
+  key = key.trim();
+  if (key in KEY_USES_FLATS) return KEY_USES_FLATS[key];
+  const root = stripKeyQuality(key);
+  if (root in KEY_USES_FLATS) return KEY_USES_FLATS[root];
+  return ["F", "B♭", "E♭", "A♭", "D♭", "Bb", "Eb", "Ab", "Db"].includes(root);
+}
+
+/* ============================================================
+   Chord-suffix grammar for flagging OCR misreads
+   ============================================================ */
+
+// One "quality/extension chunk": m, min, maj, dim, aug, sus2, add9, 7, 13,
+// b5, #11, 6/9, +, °, ø, or any of those wrapped in parentheses.
+const CHUNK =
+  "(?:maj|min|dim|aug|sus|add|m|M|o|ø|°|\\+|-)?(?:[♯♭#b]?\\d{1,2})?";
+const SUFFIX_RE = new RegExp(
+  "^" +
+    `(?:${CHUNK})*` +                 // e.g. m7, maj9, 7sus4, madd9, m7b5
+    `(?:\\((?:${CHUNK})\\))?` +       // e.g. (b5), (add9), (sus4)
+    "(?:6/9)?" +                      // the one common digit-slash chord
+    "(?:/[A-Ga-g][♯♭#b]?)?" +         // slash bass: /G, /F♯
+    "$"
+);
+
+/**
+ * Stricter check than parseChord: true only when the whole token looks like
+ * a real chord symbol. Use for "flag this for review" decisions — OCR output
+ * like "F5u52" or "Am?q" starts with a valid root but has a garbage suffix.
+ */
+export function isLikelyChord(token) {
+  const parsed = parseChord(token);
+  if (!parsed) return false;
+  return SUFFIX_RE.test(parsed.suffix);
+}
+
+/* ============================================================
+   Music features: simplification, Nashville numbers, capo helper
+   ============================================================ */
+
+/**
+ * Strip extensions for beginner arrangements: Cmaj9 -> C, Am7 -> Am,
+ * F♯m7b5 -> F♯m, G7sus4 -> G, C/G stays C/G (the bass matters for the
+ * left hand). Minor quality is kept; everything else goes.
+ */
+export function simplifyChord(token) {
+  const parsed = parseChord(token);
+  if (!parsed) return token;
+  let suffix = parsed.suffix;
+  let bass = "";
+  const slash = /^(.*)\/([A-Ga-g][♯♭#b]?)$/.exec(suffix);
+  if (slash) { suffix = slash[1]; bass = "/" + slash[2]; }
+  // minor if the quality starts with m/min but NOT maj
+  const isMinor = /^m(?!aj)/i.test(suffix) || /^min/i.test(suffix);
+  const isDim = /^(dim|°|o(?![a-z]))/.test(suffix);
+  const quality = isDim ? "dim" : isMinor ? "m" : "";
+  return parsed.letter + (parsed.accidental || "") + quality + bass;
+}
+
+// Major-scale semitone offsets for Nashville degrees 1..7.
+const DEGREE_OFFSETS = { 0: "1", 2: "2", 4: "3", 5: "4", 7: "5", 9: "6", 11: "7" };
+const FLAT_DEGREES = { 1: "♭2", 3: "♭3", 6: "♭5", 8: "♭6", 10: "♭7" };
+
+function degreeFor(semitone, keySemitone) {
+  const off = ((semitone - keySemitone) % 12 + 12) % 12;
+  return DEGREE_OFFSETS[off] ?? FLAT_DEGREES[off] ?? String(off);
+}
+
+/**
+ * Convert a chord symbol to the Nashville number system relative to a key
+ * root (e.g. in C: Am7 -> 6m7, C/E -> 1/3, F♯dim -> ♯4dim… flats preferred
+ * for out-of-scale roots).
+ */
+export function toNashville(token, keyName_) {
+  const parsed = parseChord(token);
+  const key = parseChord(stripKeyQuality(keyName_ || "C"));
+  if (!parsed || !key) return token;
+
+  let suffix = parsed.suffix;
+  let bass = "";
+  const slash = /^(.*)\/([A-Ga-g][♯♭#b]?)$/.exec(suffix);
+  if (slash) {
+    suffix = slash[1];
+    const bp = parseChord(slash[2]);
+    if (bp) bass = "/" + degreeFor(bp.semitone, key.semitone);
+  }
+  return degreeFor(parsed.semitone, key.semitone) + suffix + bass;
+}
+
+// Guitar-friendly open keys and their semitones.
+const OPEN_MAJOR = [["C", 0], ["G", 7], ["D", 2], ["A", 9], ["E", 4]];
+const OPEN_MINOR = [["Am", 9], ["Em", 4], ["Dm", 2]];
+
+/**
+ * Capo suggestions for a target key: "capo N, play <shape> shapes".
+ * Returns up to `limit` options sorted by capo position (0 = no capo).
+ */
+export function capoSuggestions(targetKeyName, minor = false, limit = 3) {
+  const target = parseChord(stripKeyQuality(targetKeyName || ""));
+  if (!target) return [];
+  const shapes = minor ? OPEN_MINOR : OPEN_MAJOR;
+  const out = [];
+  for (const [shape, semi] of shapes) {
+    const capo = ((target.semitone - semi) % 12 + 12) % 12;
+    if (capo <= 7) out.push({ capo, shape });
+  }
+  out.sort((a, b) => a.capo - b.capo);
+  return out.slice(0, limit);
+}

@@ -1,0 +1,51 @@
+import assert from "node:assert/strict";
+import {
+  transposeChord, isLikelyChord, simplifyChord, toNashville, capoSuggestions,
+} from "../src/lib/theory.js";
+
+export const tests = [
+  ["reference transpositions", () => {
+    const cases = [
+      ["C", 2, false, "D"], ["Am", 2, false, "Bm"], ["F♯m7", 1, false, "Gm7"],
+      ["Bb", 2, false, "C"], ["C", -2, true, "B♭"], ["G7", 5, false, "C7"],
+      ["Esus4", 1, false, "Fsus4"], ["Dmaj7", 3, true, "Fmaj7"],
+      ["F#", 2, false, "G♯"], ["Fsus2", 2, false, "Gsus2"],
+    ];
+    for (const [t, s, flats, want] of cases) {
+      assert.equal(transposeChord(t, s, flats), want, `${t} ${s>0?"+":""}${s}`);
+    }
+  }],
+  ["slash bass transposes", () => {
+    assert.equal(transposeChord("C/G", 2, false), "D/A");
+    assert.equal(transposeChord("D/F♯", -2, false), "C/E");
+    assert.equal(transposeChord("Am7/G", 2, false), "Bm7/A");
+  }],
+  ["chord grammar accepts real chords", () => {
+    for (const t of ["C", "Am", "F#", "Bb", "Cmaj7", "Gsus2", "A7sus4", "Cadd9",
+                     "Em7b5", "Ddim", "C6/9", "D/F#", "Am7/G", "C(add9)"]) {
+      assert.ok(isLikelyChord(t), t);
+    }
+  }],
+  ["chord grammar rejects OCR garbage", () => {
+    for (const t of ["F5u52", "Am?q", "Cxyz", "Gsusx", "B%", "Ehello"]) {
+      assert.ok(!isLikelyChord(t), t);
+    }
+  }],
+  ["simplify strips extensions", () => {
+    assert.equal(simplifyChord("Cmaj9"), "C");
+    assert.equal(simplifyChord("Am7"), "Am");
+    assert.equal(simplifyChord("F♯m7b5"), "F♯m");
+    assert.equal(simplifyChord("Am7/G"), "Am/G");
+  }],
+  ["nashville numbers", () => {
+    assert.equal(toNashville("C", "C"), "1");
+    assert.equal(toNashville("Am7", "C"), "6m7");
+    assert.equal(toNashville("C/E", "C"), "1/3");
+    assert.equal(toNashville("Bb", "C"), "♭7");
+  }],
+  ["capo suggestions", () => {
+    const eb = capoSuggestions("E♭", false, 5);
+    assert.deepEqual(eb[0], { capo: 1, shape: "D" });
+    assert.ok(eb.some((s) => s.capo === 3 && s.shape === "C"));
+  }],
+];
