@@ -56,6 +56,11 @@ function regexRepairs(t) {
   let s = t;
   // Sharp read as H / tt right after a note letter: FH -> F♯, GHm7 -> G♯m7.
   s = s.replace(/^([A-Ga-g])(?:H|tt)/, "$1♯");
+  // A "#" sharp is very often OCR'd as an "i" or "e" glued to the root:
+  // "Fim" -> "F♯m", "Cem" -> "C♯m", "Fi" -> "F♯". Only when what follows is a
+  // real chord continuation (or the end), so lyric fragments like "Fig"/"Fie"
+  // are left alone.
+  s = s.replace(/^([A-Ga-g])[ie](?=m|M|maj|min|dim|sus|aug|add|7|9|6|5|4|11|13|\/|$)/, "$1♯");
   // "rn" is the classic OCR read of "m" (Arn7 -> Am7).
   s = s.replace(/rn/g, "m");
   // sus family: 5us / su5 / 5u5 -> sus ; susz/susZ -> sus2.

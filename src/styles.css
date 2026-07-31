@@ -63,6 +63,10 @@
   --orb-1: rgba(99, 91, 245, 0.20);
   --orb-2: rgba(168, 105, 245, 0.16);
   --orb-3: rgba(80, 160, 250, 0.12);
+
+  /* frosted popover that floats over the WHITE rendered PDF page, so it needs
+     more body than the ultra-transparent app surfaces to stay readable */
+  --popover-bg: rgba(255, 255, 255, 0.86);
 }
 
 :root[data-theme="dark"] {
@@ -104,6 +108,8 @@
   --orb-1: rgba(94, 86, 244, 0.17);
   --orb-2: rgba(150, 90, 246, 0.13);
   --orb-3: rgba(64, 130, 244, 0.10);
+
+  --popover-bg: rgba(22, 22, 32, 0.82);
 }
 
 /* ------------------------------------------------------------
@@ -1244,8 +1250,15 @@ g:has(.wheel-wedge.is-from) .wheel-label { fill: var(--primary); }
   width: 190px;
   cursor: default;
   animation: riseIn 0.25s ease;
+  /* Floats over the white rendered page — use a frosted, higher-body panel so
+     the label and input read clearly, not the near-invisible app surface. */
+  background: var(--popover-bg);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-md);
+  -webkit-backdrop-filter: blur(22px) saturate(1.8);
+  backdrop-filter: blur(22px) saturate(1.8);
 }
-.overlay-popup-title { font-size: 12px; font-weight: 700; color: var(--text-soft); }
+.overlay-popup-title { font-size: 12px; font-weight: 700; color: var(--text); }
 .overlay-popup-actions { display: flex; gap: 6px; }
 
 /* done state */

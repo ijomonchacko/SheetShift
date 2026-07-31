@@ -94,7 +94,7 @@ export async function ocrPageChords(image, { topMarginPx = 0, minConfidence = 50
   const domH = [...hist.entries()].sort((a, b) => b[1] - a[1])[0][0] || cands[0].h;
 
   const near = cands
-    .filter((c) => c.h >= domH * 0.65 && c.h <= domH * 1.5)
+    .filter((c) => c.h >= domH * 0.6 && c.h <= domH * 1.9)
     .sort((a, b) => b.confidence - a.confidence);
 
   // De-duplicate overlapping reads of the same symbol (keep the most

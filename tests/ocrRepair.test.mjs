@@ -16,6 +16,16 @@ export const tests = [
     ];
     for (const [i, want] of cases) assert.equal(cleanOcrToken(i), want, i);
   }],
+  ["sharp read as i/e right after the root repaired", () => {
+    const cases = [
+      ["Fim", "F♯m"], ["Cem", "C♯m"], ["Fim7", "F♯m7"], ["Cim", "C♯m"],
+      ["Gi", "G7"], ["Fi", "F♯"],
+    ];
+    for (const [i, want] of cases) assert.equal(cleanOcrToken(i), want, i);
+    // lyric-ish fragments must NOT be coerced into sharps
+    assert.equal(cleanOcrToken("Fig"), "Fig");
+    assert.equal(cleanOcrToken("Fie"), "Fie");
+  }],
   ["valid reads never modified", () => {
     for (const t of ["C", "F#", "Fsus2", "Am7/G", "C6", "G13", "B7", "Eb", "A4"]) {
       assert.equal(cleanOcrToken(t), t, t);
