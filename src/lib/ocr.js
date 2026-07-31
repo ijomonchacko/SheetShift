@@ -36,22 +36,29 @@ export async function terminateOcr() {
 
 /**
  * Color-independent OCR detection for image/scanned pages where chords are NOT
- * a distinct color (e.g. black chord symbols over black notation). Runs
- * tesseract over the WHOLE rendered page in sparse-text mode, then keeps only
- * the words that read as real chords, are confident, and cluster at the chord
- * text size — mirroring the text-layer strategy (chord grammar + size), but on
- * OCR output instead of the embedded text.
+ * a distinct color (e.g. black chord symbols over black notation). Reads the
+ * WHOLE page and keeps the words that are real chords.
+ *
+ * Recall is the hard part on dense notation: sparse-text segmentation misses
+ * most chords, so we use tesseract's uniform-block mode, which finds far more
+ * text, then lean on structure to reject the noise it also brings in:
+ *   - chord grammar (isChordToken) + a modest confidence floor,
+ *   - the dominant chord TEXT HEIGHT (real chords share a size; clefs, big
+ *     rehearsal letters and tiny fragments do not), and
+ *   - ROW membership: chords are printed in horizontal lines above the staff,
+ *     so a genuine chord line holds several of them at one height. Isolated
+ *     single letters (note names, dynamics) are dropped unless very confident.
  *
  * @param image  an HTMLCanvasElement / ImageBitmap / anything tesseract accepts
  * @returns [{ text, confidence, x, y, w, h }]  boxes in the image's pixel space
  */
-export async function ocrPageChords(image, { topMarginPx = 0, minConfidence = 50 } = {}) {
+export async function ocrPageChords(image, { topMarginPx = 0, minConfidence = 45 } = {}) {
   const worker = await getWorker();
-  // Whole-page pass: sparse text, and DROP the chord whitelist so lyrics/titles
-  // are read as themselves (and rejected by the grammar) rather than being
-  // forced into chord-looking characters.
+  // Whole-page pass: uniform block segmentation finds the most chord words, and
+  // DROP the chord whitelist so lyrics/titles are read as themselves (and
+  // rejected by the grammar) rather than forced into chord-looking characters.
   await worker.setParameters({
-    tessedit_pageseg_mode: PSM.SPARSE_TEXT,
+    tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
     tessedit_char_whitelist: "",
   });
   let words;
@@ -81,30 +88,67 @@ export async function ocrPageChords(image, { topMarginPx = 0, minConfidence = 50
       confidence: Math.round(w.confidence ?? 0),
       x: b.x0, y: b.y0, w: width, h: height,
       cx: b.x0 + width / 2, cy: b.y0 + height / 2,
+      // "strong" = carries a quality/extension/accidental/bass beyond the bare
+      // root (Am, F#m, G7, C/E). These are unambiguous chord names. A bare
+      // single letter (A, D, G) is far more likely to be a note name, staff
+      // artifact or stray mark, so it needs corroboration below.
+      strong: hasChordQuality(cleaned),
     });
   }
-  if (cands.length < 3) return cands.map(strip);
+  if (cands.length < 4) return cands.filter((c) => c.strong).map(strip);
 
-  // Size clustering: real chords share a text height. Pick the most populous
-  // height bucket and keep tokens near it — this drops oversized misreads (a
-  // clef/time-signature read as a letter) and undersized fragments (a stray
-  // note-name letter), which is the main source of noise on dense notation.
+  // Dominant chord text height (real chords cluster here).
   const hist = new Map();
-  for (const c of cands) { const k = Math.round(c.h / 4) * 4; hist.set(k, (hist.get(k) || 0) + 1); }
-  const domH = [...hist.entries()].sort((a, b) => b[1] - a[1])[0][0] || cands[0].h;
+  for (const c of cands) { const k = Math.round(c.h / 2) * 2; hist.set(k, (hist.get(k) || 0) + 1); }
+  const Hd = Number([...hist.entries()].sort((a, b) => b[1] - a[1])[0][0]) || cands[0].h;
 
-  const near = cands
-    .filter((c) => c.h >= domH * 0.6 && c.h <= domH * 1.9)
-    .sort((a, b) => b.confidence - a.confidence);
+  // Keep only tokens at the chord text size — drops oversized letters/clefs and
+  // undersized fragments.
+  const tight = cands
+    .filter((c) => c.h >= Hd * 0.8 && c.h <= Hd * 1.3)
+    .sort((a, b) => a.cy - b.cy);
 
-  // De-duplicate overlapping reads of the same symbol (keep the most
-  // confident), which sparse-text OCR occasionally emits.
+  // Cluster into horizontal rows, then judge each row. Chords are printed in
+  // lines above the staff, so a real chord line contains a recognizable chord
+  // name. This is what stops staff lines, commas and note letters from being
+  // transposed:
+  //   - a row with a strong chord is a chord line → keep all of it,
+  //   - an all-bare-letter row is accepted only if it's clearly a progression
+  //     (several letters, all confidently read),
+  //   - a lone token is kept only if it's a strong, confident chord.
+  const rows = [];
+  for (const c of tight) {
+    let r = rows.find((r) => Math.abs(r.y - c.cy) < Hd * 0.9);
+    if (!r) { r = { y: c.cy, items: [] }; rows.push(r); }
+    r.items.push(c);
+  }
+  const keep = [];
+  for (const r of rows) {
+    if (r.items.length === 1) {
+      const it = r.items[0];
+      if (it.strong && it.confidence >= 66) keep.push(it);
+    } else if (r.items.some((i) => i.strong)) {
+      keep.push(...r.items);
+    } else if (r.items.length >= 2 && r.items.every((i) => i.confidence >= 76)) {
+      keep.push(...r.items);
+    }
+  }
+
+  // De-duplicate overlapping reads of the same symbol (keep the most confident).
+  keep.sort((a, b) => b.confidence - a.confidence);
   const out = [];
-  for (const c of near) {
-    if (out.some((o) => Math.abs(o.cx - c.cx) < domH && Math.abs(o.cy - c.cy) < domH * 0.8)) continue;
+  for (const c of keep) {
+    if (out.some((o) => Math.abs(o.cx - c.cx) < Hd * 0.9 && Math.abs(o.cy - c.cy) < Hd * 0.8)) continue;
     out.push(c);
   }
   return out.map(strip);
+}
+
+// True when the chord carries a quality/extension/accidental/bass beyond a bare
+// root letter (Am, F#m, G7, C/E, Bb) — i.e. an unambiguous chord name.
+function hasChordQuality(token) {
+  const m = /^[A-Ga-g][#♯b♭]?(.*)$/.exec((token || "").trim());
+  return !!(m && m[1]);
 }
 
 function strip({ text, confidence, x, y, w, h }) {

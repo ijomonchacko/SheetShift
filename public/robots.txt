@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://sheetshift.vercel.app/sitemap.xml
+Sitemap: https://sheetshift-iota.vercel.app/sitemap.xml

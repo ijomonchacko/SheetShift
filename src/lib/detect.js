@@ -141,7 +141,7 @@ export async function detectChords(arrayBuffer, chordColors, opts = {}) {
     // higher DPI for the OCR pass to improve recognition.
     if (pageResult.length === 0) {
       onProgress(`Scanning page ${pageNum} of ${numPages} for chords…`, pageNum - 1, numPages);
-      const OCR_SCALE = Math.max(scale, 200 / 72);
+      const OCR_SCALE = Math.max(scale, 300 / 72);
       const { canvas: ocrCanvas } = await renderPageToCanvas(pdfDoc, pageNum, OCR_SCALE);
       const ocrTopMargin = Math.round(ocrCanvas.height * marginRatio);
       const words = await ocrPageChords(ocrCanvas, { topMarginPx: ocrTopMargin });

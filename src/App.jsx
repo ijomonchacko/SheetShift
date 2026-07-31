@@ -57,8 +57,7 @@ export default function App() {
   const [hoverIdx, setHoverIdx] = useState(null);
 
   /* ---------------- detection settings ---------------- */
-  const [colors, setColors] = useState([[170, 0, 0]]);
-  const [colorAuto, setColorAuto] = useState(true);
+  const [colors, setColors] = useState([[170, 0, 0]]); // default maroon; user can change
   const [dpi, setDpi] = useState(150);
   // 0 by default: titles are now dropped semantically (isChordCandidate), so we
   // no longer need to blank out the top of the page — doing that used to skip
@@ -67,9 +66,9 @@ export default function App() {
   const [marginFirstPage, setMarginFirstPage] = useState(true);
 
   /* ---------------- output settings ---------------- */
-  const [fontId, setFontId] = useState(BUILTIN_FONTS[0].id);
+  const [fontId, setFontId] = useState(BUILTIN_FONTS[0].id); // Liberation Sans (Arial), regular
   const [customFont, setCustomFont] = useState(null); // { name, bytes }
-  const [fontSize, setFontSize] = useState("");
+  const [fontSize, setFontSize] = useState("14");
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const [outputMode, setOutputMode] = useState(SHARE?.out ?? "transpose"); // transpose | nashville
   const [enharmonic, setEnharmonic] = useState("auto"); // auto | sharps | flats
@@ -325,7 +324,7 @@ export default function App() {
       const preferFlats = mode === "semitones" ? false : keyPrefersFlats(toKey);
 
       const arrayBuffer = await file.arrayBuffer();
-      const useColors = colorAuto ? [[170, 0, 0]] : colors;
+      const useColors = colors;
 
       const { boxes, numPages, usedOcr } = await detectChords(arrayBuffer, useColors, {
         scale: Number(dpi) / 72,
@@ -416,7 +415,7 @@ export default function App() {
         : await loadBuiltinFont(fontId);
 
       const origBytes = await file.arrayBuffer();
-      const drawColor = colorAuto ? [0.667, 0, 0] : colors[0].map((c) => c / 255);
+      const drawColor = colors[0].map((c) => c / 255);
       const outBytes = await overlayTransposedChords(origBytes, plan, fontBytes, {
         colorRgb: drawColor,
         fontSize: fontSize ? Number(fontSize) : null,
@@ -616,77 +615,98 @@ export default function App() {
               </span>
             </summary>
 
-            <div className="field-grid">
-              <div className="field field-font">
-                <label className="field-label" htmlFor="fontSelect">Font</label>
-                <select id="fontSelect" className="select" value={fontId} onChange={(e) => {
-                  if (e.target.value === "__custom__") customFontInputRef.current?.click();
-                  else if (e.target.value === "__system__") setFontPickerOpen(true);
-                  else setFontId(e.target.value);
-                }}>
-                  {BUILTIN_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
-                  {customFont && <option value="__custom__">{customFont.name} (custom)</option>}
-                  <option value="__system__">Choose from this computer…</option>
-                  <option value="__custom__">Upload a .ttf/.otf file…</option>
-                </select>
-                <input ref={customFontInputRef} type="file" accept=".ttf,.otf" hidden onChange={handleCustomFontChange} />
-                {fontPickerOpen && (
-                  <SystemFontPicker
-                    onClose={() => setFontPickerOpen(false)}
-                    onPick={({ name, bytes }) => {
-                      setCustomFont({ name, bytes });
-                      setFontId("__custom__");
-                      setFontPickerOpen(false);
-                    }}
-                  />
-                )}
-              </div>
-
-              <div className="field">
-                <label className="field-label" htmlFor="fontSizeInput">Font size</label>
-                <input id="fontSizeInput" type="text" className="select" placeholder="Auto"
-                       value={fontSize} onChange={(e) => setFontSize(e.target.value)} />
-              </div>
-
-              <div className="field field-wide">
-                <label className="field-label">Chord color{colors.length > 1 ? "s" : ""} <span className="hint">(scanned PDFs + output)</span></label>
-                <ColorPicker file={file} colors={colors} onColorsChange={setColors}
-                             auto={colorAuto} onAutoChange={setColorAuto} />
-              </div>
-
-              <div className="field">
-                <label className="field-label" htmlFor="dpiInput">Scan DPI</label>
-                <input id="dpiInput" type="number" className="select" value={dpi} onChange={(e) => setDpi(e.target.value)} />
-              </div>
-
-              <div className="field">
-                <label className="field-label" htmlFor="marginInput">Header margin <span className="hint">(0 = scan whole page)</span></label>
-                <input id="marginInput" type="number" step="0.01" className="select" value={topMargin} onChange={(e) => setTopMargin(e.target.value)} />
-                <label className="checkbox-inline" style={{ marginTop: 6 }}>
-                  <input type="checkbox" checked={marginFirstPage} onChange={(e) => setMarginFirstPage(e.target.checked)} />
-                  <span className="checkbox-label">First page only</span>
-                </label>
-              </div>
-
-              <div className="field field-wide">
-                <label className="field-label">Output</label>
-                <div className="output-options">
-                  <select className="select" value={outputMode}
+            <div className="adv-section">
+              <h3 className="adv-heading">Output</h3>
+              <div className="field-grid">
+                <div className="field field-wide">
+                  <label className="field-label" htmlFor="outputModeSelect">Transpose to</label>
+                  <select id="outputModeSelect" className="select" value={outputMode}
                           onChange={(e) => updateOutputOption({ outputMode: e.target.value })}>
                     <option value="transpose">Transposed chords</option>
                     <option value="nashville">Nashville numbers</option>
                   </select>
-                  <select className="select" value={enharmonic} title="Sharp/flat spelling"
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="enharmonicSelect">Accidentals</label>
+                  <select id="enharmonicSelect" className="select" value={enharmonic} title="Sharp/flat spelling"
                           disabled={outputMode === "nashville"}
                           onChange={(e) => updateOutputOption({ enharmonic: e.target.value })}>
                     <option value="auto">♯/♭ auto</option>
                     <option value="sharps">Prefer ♯</option>
                     <option value="flats">Prefer ♭</option>
                   </select>
-                  <label className="checkbox-inline">
+                </div>
+                <div className="field">
+                  <label className="field-label">Simplify</label>
+                  <label className="switch">
                     <input type="checkbox" checked={simplify}
                            onChange={(e) => updateOutputOption({ simplify: e.target.checked })} />
-                    <span className="checkbox-label">Simplify (Cmaj9 → C)</span>
+                    <span className="switch-track"><span className="switch-thumb" /></span>
+                    <span className="switch-text">Cmaj9 → C</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="adv-section">
+              <h3 className="adv-heading">Chord appearance</h3>
+              <div className="field-grid">
+                <div className="field field-font">
+                  <label className="field-label" htmlFor="fontSelect">Font</label>
+                  <select id="fontSelect" className="select" value={fontId} onChange={(e) => {
+                    if (e.target.value === "__custom__") customFontInputRef.current?.click();
+                    else if (e.target.value === "__system__") setFontPickerOpen(true);
+                    else setFontId(e.target.value);
+                  }}>
+                    {BUILTIN_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                    {customFont && <option value="__custom__">{customFont.name} (custom)</option>}
+                    <option value="__system__">Choose from this computer…</option>
+                    <option value="__custom__">Upload a .ttf/.otf file…</option>
+                  </select>
+                  <input ref={customFontInputRef} type="file" accept=".ttf,.otf" hidden onChange={handleCustomFontChange} />
+                  {fontPickerOpen && (
+                    <SystemFontPicker
+                      onClose={() => setFontPickerOpen(false)}
+                      onPick={({ name, bytes }) => {
+                        setCustomFont({ name, bytes });
+                        setFontId("__custom__");
+                        setFontPickerOpen(false);
+                      }}
+                    />
+                  )}
+                </div>
+
+                <div className="field">
+                  <label className="field-label" htmlFor="fontSizeInput">Font size</label>
+                  <input id="fontSizeInput" type="text" className="select" placeholder="Auto"
+                         value={fontSize} onChange={(e) => setFontSize(e.target.value)} />
+                </div>
+
+                <div className="field field-wide">
+                  <label className="field-label">Chord color{colors.length > 1 ? "s" : ""} <span className="hint">— scanned PDFs &amp; output ink</span></label>
+                  <ColorPicker file={file} colors={colors} onColorsChange={setColors} />
+                </div>
+              </div>
+            </div>
+
+            <div className="adv-section">
+              <h3 className="adv-heading">Scanned-PDF detection</h3>
+              <div className="field-grid">
+                <div className="field">
+                  <label className="field-label" htmlFor="dpiInput">Scan DPI</label>
+                  <input id="dpiInput" type="number" className="select" value={dpi} onChange={(e) => setDpi(e.target.value)} />
+                </div>
+
+                <div className="field">
+                  <label className="field-label" htmlFor="marginInput">Header margin</label>
+                  <input id="marginInput" type="number" step="0.01" className="select" value={topMargin} onChange={(e) => setTopMargin(e.target.value)} />
+                </div>
+
+                <div className="field field-wide">
+                  <label className="switch">
+                    <input type="checkbox" checked={marginFirstPage} onChange={(e) => setMarginFirstPage(e.target.checked)} />
+                    <span className="switch-track"><span className="switch-thumb" /></span>
+                    <span className="switch-text">Apply header margin to the first page only</span>
                   </label>
                 </div>
               </div>

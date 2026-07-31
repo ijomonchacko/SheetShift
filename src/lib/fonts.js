@@ -8,10 +8,10 @@
 //   Liberation Serif — metric-compatible with Times New Roman
 //   Liberation Mono  — metric-compatible with Courier New
 export const BUILTIN_FONTS = [
+  { id: "liberation-sans", label: "Liberation Sans · like Arial", url: "/fonts/LiberationSans-Regular.ttf", bold: false },
+  { id: "liberation-sans-bold", label: "Liberation Sans · like Arial (Bold)", url: "/fonts/LiberationSans-Bold.ttf", bold: true },
   { id: "dejavu-sans-bold", label: "DejaVu Sans (Bold)", url: "/fonts/DejaVuSans-Bold.ttf", bold: true },
   { id: "dejavu-sans", label: "DejaVu Sans", url: "/fonts/DejaVuSans.ttf", bold: false },
-  { id: "liberation-sans-bold", label: "Liberation Sans · like Arial (Bold)", url: "/fonts/LiberationSans-Bold.ttf", bold: true },
-  { id: "liberation-sans", label: "Liberation Sans · like Arial", url: "/fonts/LiberationSans-Regular.ttf", bold: false },
   { id: "carlito-bold", label: "Carlito · like Calibri (Bold)", url: "/fonts/Carlito-Bold.ttf", bold: true },
   { id: "carlito", label: "Carlito · like Calibri", url: "/fonts/Carlito-Regular.ttf", bold: false },
   { id: "poppins-bold", label: "Poppins (Bold)", url: "/fonts/Poppins-Bold.ttf", bold: true },
