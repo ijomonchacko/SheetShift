@@ -21,6 +21,10 @@ export const tests = [
       assert.equal(cleanOcrToken(t), t, t);
     }
   }],
+  ["stray tail digits trim back to the chord root", () => {
+    assert.equal(cleanOcrToken("G1"), "G");
+    assert.equal(cleanOcrToken("Fmaj1"), "Fmaj");
+  }],
   ["unrepairable garbage passes through for flagging", () => {
     assert.equal(cleanOcrToken("%%"), "%%");
     assert.equal(cleanOcrToken("xyz"), "xyz");

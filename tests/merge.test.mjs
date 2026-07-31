@@ -22,12 +22,28 @@ export const tests = [
     const aM = row(600, [["A", 60, 9], ["M", 70, 8]]);
     assert.deepEqual(texts(mergeSplitTokens(aM)), ["AM"]);
   }],
+  ["D + M merges back into DM", () => {
+    const boxes = row(600, [["D", 60, 9], ["M", 71, 10]]);
+    assert.deepEqual(texts(mergeSplitTokens(boxes)), ["DM"]);
+  }],
+  ["split chord fragments still merge with a wider gap", () => {
+    const boxes = row(600, [["D", 60, 9], ["M", 84, 10]]);
+    assert.deepEqual(texts(mergeSplitTokens(boxes)), ["DM"]);
+  }],
   ["F# + m with slight overlap merges", () => {
     const boxes = [
       { text: "F#", x0: 60, x1: 74, y0: 600, y1: 613, pageIndex: 0, confidence: 100, method: "text" },
       { text: "m", x0: 73, x1: 82, y0: 602, y1: 611, pageIndex: 0, confidence: 100, method: "text" },
     ];
     assert.deepEqual(texts(mergeSplitTokens(boxes)), ["F#m"]);
+  }],
+  ["small stray fragments collapse into their chord", () => {
+    const boxes = row(600, [["G", 60, 9], ["I", 74, 6]]);
+    assert.deepEqual(texts(mergeSplitTokens(boxes)), ["G"]);
+  }],
+  ["G + 1 stray fragment collapses back to G", () => {
+    const boxes = row(600, [["G", 60, 9], ["1", 71, 7]]);
+    assert.deepEqual(texts(mergeSplitTokens(boxes)), ["G"]);
   }],
 
   ["F # m fragments merge into F#m", () => {

@@ -22,12 +22,12 @@ export const tests = [
   }],
   ["chord grammar accepts real chords", () => {
     for (const t of ["C", "Am", "F#", "Bb", "Cmaj7", "Gsus2", "A7sus4", "Cadd9",
-                     "Em7b5", "Ddim", "C6/9", "D/F#", "Am7/G", "C(add9)"]) {
+                     "Em7b5", "Ddim", "C6/9", "D/F#", "Am7/G", "C(add9)", "A4"]) {
       assert.ok(isLikelyChord(t), t);
     }
   }],
   ["chord grammar rejects OCR garbage", () => {
-    for (const t of ["F5u52", "Am?q", "Cxyz", "Gsusx", "B%", "Ehello"]) {
+    for (const t of ["F5u52", "Am?q", "Cxyz", "Gsusx", "B%", "Ehello", "G1"]) {
       assert.ok(!isLikelyChord(t), t);
     }
   }],

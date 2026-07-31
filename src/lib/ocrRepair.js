@@ -9,7 +9,7 @@
 //
 // Pure module (no tesseract import) so it can be unit-tested in Node.
 
-import { isLikelyChord } from "./theory.js";
+import { isLikelyChord, isLooseChordFragment } from "./theory.js";
 
 /** Exact-match systematic misreads (ported from image_extract.py). */
 export const OCR_FIXES = {
@@ -98,6 +98,18 @@ function substitutionRepair(token, maxSubs = 2) {
   return null;
 }
 
+function trimToLikelyChord(token, maxTrim = 2) {
+  const t = (token || "").trim();
+  if (!t) return null;
+  for (let cut = 1; cut <= maxTrim && cut < t.length; cut++) {
+    const tail = t.slice(t.length - cut);
+    if (!/^[123♯♭#bIl|]+$/.test(tail)) continue;
+    const cand = t.slice(0, t.length - cut).trim();
+    if (isLikelyChord(cand)) return cand;
+  }
+  return null;
+}
+
 /**
  * Clean one raw OCR token. Correct reads pass through untouched; invalid
  * reads go through exact fixes, regex repairs, then constrained
@@ -111,6 +123,9 @@ export function cleanOcrToken(text) {
 
   const rx = regexRepairs(t);
   if (isLikelyChord(rx)) return rx;
+
+  const salvage = trimToLikelyChord(rx) || trimToLikelyChord(t);
+  if (salvage) return salvage;
 
   const sub = substitutionRepair(rx);
   if (sub) return sub;
@@ -149,19 +164,39 @@ export function mergeSplitTokens(pageBoxes, gapFactor = 1.0) {
     const next = pageBoxes[i];
     const h = Math.max(cur.y1 - cur.y0, next.y1 - next.y0);
     const gap = next.x0 - cur.x1;
-    const closeEnough = sameRow(cur, next) && gap >= -h && gap <= h * gapFactor;
+    const curValid = isLikelyChord(cur.text);
+    const nextValid = isLikelyChord(next.text);
+    const curLoose = isLooseChordFragment(cur.text);
+    const nextLoose = isLooseChordFragment(next.text);
+    const loosePair = curLoose || nextLoose;
+    const mergeCandidate =
+      (curValid && nextLoose && next.text.length <= 2) ||
+      (nextValid && curLoose && cur.text.length <= 2) ||
+      (!curValid && !nextValid && (curLoose || nextLoose));
+    const closeEnough = sameRow(cur, next) && gap >= -h && gap <= h * (gapFactor + (loosePair ? 1.25 : 0));
 
-    if (closeEnough) {
+    if (closeEnough || (sameRow(cur, next) && mergeCandidate && gap <= h * (gapFactor + 2.25))) {
       const combined = cleanOcrToken(cur.text + next.text);
-      const curValid = isLikelyChord(cur.text);
-      const nextValid = isLikelyChord(next.text);
+      const curW = cur.x1 - cur.x0;
+      const nextW = next.x1 - next.x0;
+      const tinyCur = !curValid && curW <= h * 0.9 && cur.text.length <= 2;
+      const tinyNext = !nextValid && nextW <= h * 0.9 && next.text.length <= 2;
       const shouldMerge =
         (isLikelyChord(combined) && (!curValid || !nextValid)) ||
-        (!curValid && !nextValid);
+        (curValid && nextLoose) ||
+        (nextValid && curLoose) ||
+        (curValid && tinyNext) ||
+        (nextValid && tinyCur) ||
+        (!curValid && !nextValid && (curLoose || nextLoose));
       if (shouldMerge) {
+        const mergedText =
+          (isLikelyChord(combined) && (!curValid || !nextValid)) ? combined :
+          curValid && tinyNext ? cur.text :
+          nextValid && tinyCur ? next.text :
+          combined;
         cur = {
           ...cur,
-          text: combined,
+          text: mergedText,
           x1: Math.max(cur.x1, next.x1),
           y0: Math.min(cur.y0, next.y0),
           y1: Math.max(cur.y1, next.y1),

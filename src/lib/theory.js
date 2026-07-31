@@ -11,6 +11,7 @@ const SHARP_NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A
 const FLAT_NAMES = ["C", "D♭", "D", "E♭", "E", "F", "G♭", "G", "A♭", "A", "B♭", "B"];
 const NATURAL_INDEX = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 const CHORD_RE = /^([A-Ga-g])([♯♭#b]?)(.*)$/;
+const STRAY_ROOT_TAIL = /^(?:0|1|2|3|4|8|10|12)$/;
 
 const KEY_USES_FLATS = {
   C: false, G: false, D: false, A: false, E: false, B: false,
@@ -92,16 +93,36 @@ export function keyPrefersFlats(key) {
    Chord-suffix grammar for flagging OCR misreads
    ============================================================ */
 
-// One "quality/extension chunk": m, min, maj, dim, aug, sus2, add9, 7, 13,
-// b5, #11, 6/9, +, °, ø, or any of those wrapped in parentheses.
-const CHUNK =
-  "(?:maj|min|dim|aug|sus|add|m|M|o|ø|°|\\+|-)?(?:[♯♭#b]?\\d{1,2})?";
+// Extension numbers that may sit DIRECTLY on a root: C4 C5 C6 C7 C9 C11 C13.
+// 1/2/3/8/10/12 are deliberately absent — they are not chord extensions, so
+// "G1"/"G2"/"G3" is never a chord. It is a real "G" that swallowed a stray
+// fragment (half a glyph, a stem, a slur end) sitting next to it.
+const ROOT_EXT = "(?:4|5|6|7|9|11|13)";
+// Altered/added tones always carry an accidental: b5, ♯9, #11, b13.
+const ALT_EXT = "(?:[♯♭#b](?:4|5|6|9|11|13))";
+
+// One "quality/extension chunk". Each alternative consumes at least one
+// character, so the `(?:CHUNK)*` below can never spin on an empty match.
+const CHUNK = [
+  `(?:maj|Maj|MAJ|M|Δ)${ROOT_EXT}?`,        // Cmaj7, CM7, and bare "DM"
+  "(?:min|Min|m)(?:6|7|9|11|13)?",          // Am, Am7, Cmin9
+  "(?:sus|Sus)(?:2|4)?",                    // sus, sus2, sus4
+  "(?:add|Add)(?:2|4|6|9|11|13)",           // add9 (a bare "add" is not one)
+  "(?:dim|Dim|°|o(?![a-z]))(?:7)?",         // Cdim, C°7
+  "(?:aug|Aug|\\+)",                        // Caug, C+
+  "(?:ø|Ø)(?:7)?",                          // half-diminished
+  "(?:alt|no3|no5)",
+  ROOT_EXT,                                 // C7, C13, C5
+  ALT_EXT,                                  // 7b9, maj7#11
+  "-(?:5|9)",                               // 7-5 shorthand
+].join("|");
+
 const SUFFIX_RE = new RegExp(
   "^" +
-    `(?:${CHUNK})*` +                 // e.g. m7, maj9, 7sus4, madd9, m7b5
-    `(?:\\((?:${CHUNK})\\))?` +       // e.g. (b5), (add9), (sus4)
-    "(?:6/9)?" +                      // the one common digit-slash chord
-    "(?:/[A-Ga-g][♯♭#b]?)?" +         // slash bass: /G, /F♯
+    `(?:${CHUNK})*` +                            // m7, maj9, 7sus4, madd9, m7b5
+    `(?:\\((?:${CHUNK})+\\)(?:${CHUNK})*)?` +    // (b5), (add9), m(maj7)
+    "(?:/9)?" +                                  // the "6" of 6/9 is a chunk
+    "(?:/[A-Ga-g][♯♭#b]?)?" +                    // slash bass: /G, /F♯
     "$"
 );
 
@@ -113,7 +134,34 @@ const SUFFIX_RE = new RegExp(
 export function isLikelyChord(token) {
   const parsed = parseChord(token);
   if (!parsed) return false;
+  // Long suffixes are garbage by definition and would make the alternation
+  // above backtrack for a while, so reject them before running the regex.
+  if (parsed.suffix.length > 14) return false;
   return SUFFIX_RE.test(parsed.suffix);
+}
+
+/**
+ * True when `token` is chord material that carries no root of its own — the
+ * pieces a detector splits a symbol into: "m", "M", "♯", "b", "sus4", "7",
+ * "add9". Used to tell a genuine fragment ("D" + "M") apart from a blob that
+ * merely landed next to a chord ("G" + "1").
+ */
+export function isChordSuffix(token) {
+  let t = (token || "").trim();
+  if (!t || t.length > 14) return false;
+  if (/^[♯♭#b]/.test(t)) t = t.slice(1);   // a bare accidental counts
+  return t === "" || SUFFIX_RE.test(t);
+}
+
+/**
+ * Chord-adjacent fragments that should be glued to a neighbor rather than
+ * treated as standalone symbols: suffix runs plus stray OCR digits/accidentals.
+ */
+export function isLooseChordFragment(token) {
+  let t = (token || "").trim();
+  if (!t || t.length > 14) return false;
+  if (isChordSuffix(t)) return true;
+  return STRAY_ROOT_TAIL.test(t) || /^[♯♭#b]$/.test(t);
 }
 
 /* ============================================================
