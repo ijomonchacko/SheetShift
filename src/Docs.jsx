@@ -88,14 +88,15 @@ export default function Docs() {
               this path was used.
             </p>
             <p>
-              For scanned or flattened PDFs with no text layer, it falls back to
-              optical detection: render the page, isolate the pixels matching your
-              chord color (maroon by default — use the eyedropper or auto-detect
-              if yours differs), group them into tokens, and read each one with
-              OCR. Every OCR read carries a confidence score, and low-confidence
-              reads are flagged for review. The chord color set in <em>Advanced</em>
-              is used only for this scanned-PDF path and for the color of the
-              chords SheetShift draws into the output.
+              For scanned or image-only PDFs with no text layer, it falls back to
+              OCR. If your chords are a distinct color, it isolates those pixels
+              first (fastest and most precise — set the color in <em>Advanced</em>).
+              If they aren't — e.g. black chord symbols over black notation — it
+              reads the whole page and keeps the words that actually spell chords
+              and share the chord text size, so it still works with no color at all.
+              Every OCR read carries a confidence score, and low-confidence reads
+              are flagged for review. The chord color set in <em>Advanced</em> is
+              also the color SheetShift draws the transposed chords with.
             </p>
             <div className="docs-callout">
               The first OCR run in a browser session downloads the language model

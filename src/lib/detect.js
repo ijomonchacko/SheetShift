@@ -2,7 +2,7 @@ import { loadPdf, renderPageToCanvas } from "./pdfjsSetup.js";
 import { detectBoxes } from "./colorMask.js";
 import { detectBoxesOffThread } from "./maskWorkerClient.js";
 import { extractChordTokens } from "./embeddedText.js";
-import { ocrBox } from "./ocr.js";
+import { ocrBox, ocrPageChords } from "./ocr.js";
 import { transposeChord, simplifyChord, toNashville, isLikelyChord, isChordCandidate } from "./theory.js";
 import { mergeSplitTokens } from "./ocrRepair.js";
 
@@ -132,7 +132,33 @@ export async function detectChords(arrayBuffer, chordColors, opts = {}) {
       if (!text) continue;
       pageBoxes.push(toPdfBox(b, text, confidence, "ocr"));
     }
-    allBoxes.push(...mergeSplitTokens(pageBoxes).filter((b) => isChordCandidate(b.text, { fromOcr: true })));
+    let pageResult = mergeSplitTokens(pageBoxes).filter((b) => isChordCandidate(b.text, { fromOcr: true }));
+
+    // Color-independent fallback: when no distinct-color chords were found the
+    // page is likely black-on-white notation (chords the same ink as the
+    // staff). Read the WHOLE page with OCR and keep the words that are real
+    // chords — no color required. Chord text is small, so re-render at a
+    // higher DPI for the OCR pass to improve recognition.
+    if (pageResult.length === 0) {
+      onProgress(`Scanning page ${pageNum} of ${numPages} for chords…`, pageNum - 1, numPages);
+      const OCR_SCALE = Math.max(scale, 200 / 72);
+      const { canvas: ocrCanvas } = await renderPageToCanvas(pdfDoc, pageNum, OCR_SCALE);
+      const ocrTopMargin = Math.round(ocrCanvas.height * marginRatio);
+      const words = await ocrPageChords(ocrCanvas, { topMarginPx: ocrTopMargin });
+      const osx = pw / ocrCanvas.width, osy = ph / ocrCanvas.height;
+      const wordBoxes = words.map((it) => ({
+        text: it.text,
+        confidence: it.confidence,
+        method: "ocr",
+        x0: it.x * osx,
+        x1: (it.x + it.w) * osx,
+        y0: ph - (it.y + it.h) * osy,
+        y1: ph - it.y * osy,
+        pageIndex: pageNum - 1,
+      }));
+      pageResult = mergeSplitTokens(wordBoxes).filter((b) => isChordCandidate(b.text, { fromOcr: true }));
+    }
+    allBoxes.push(...pageResult);
   }
 
   return { boxes: allBoxes, numPages, usedOcr };
