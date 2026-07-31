@@ -13,7 +13,7 @@ import { isLikelyChord } from "../lib/theory.js";
  *   onEdit(index, correctedOldText)
  *   onAdd(box, text)   box in PDF-point space {pageIndex,x0,y0,x1,y1}
  */
-export default function OverlayReview({ fileBytes, plan, onEdit, onAdd }) {
+export default function OverlayReview({ fileBytes, plan, onEdit, onAdd, onDelete }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const [geom, setGeom] = useState(null); // { scalePx, pageH, pageW } for coord mapping
@@ -117,6 +117,11 @@ export default function OverlayReview({ fileBytes, plan, onEdit, onAdd }) {
     setPopup(null);
   }
 
+  function deleteFromPopup() {
+    if (popup?.mode === "edit" && onDelete) onDelete(popup.index);
+    setPopup(null);
+  }
+
   return (
     <div className="overlay-review">
       <div className="overlay-toolbar">
@@ -174,6 +179,9 @@ export default function OverlayReview({ fileBytes, plan, onEdit, onAdd }) {
               <button type="button" className="btn btn-primary btn-xs" onClick={commitPopup}>
                 {popup.mode === "edit" ? "Save" : "Add"}
               </button>
+              {popup.mode === "edit" && onDelete && (
+                <button type="button" className="btn btn-danger btn-xs" onClick={deleteFromPopup}>Delete</button>
+              )}
               <button type="button" className="btn btn-ghost btn-xs" onClick={() => setPopup(null)}>Cancel</button>
             </div>
           </div>

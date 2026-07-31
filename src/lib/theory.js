@@ -141,6 +141,43 @@ export function isLikelyChord(token) {
 }
 
 /**
+ * Is this text-layer token a chord symbol? Chord roots are conventionally
+ * written with an UPPERCASE letter A–G, so lowercase "am"/"be"/"g" is lyric
+ * text. Combined with the full suffix grammar this is a strong,
+ * exporter-agnostic classifier that needs no color.
+ */
+export function isChordToken(token) {
+  const t = (token || "").trim();
+  return /^[A-G]/.test(t) && isLikelyChord(t);
+}
+
+/**
+ * Decide whether a detected token should be kept as a chord at all.
+ *
+ * Detection finds colored ink; that alone can't tell a chord ("Gm7") from a
+ * colored title or lyric word ("Amazing", "Chorus") that merely starts with
+ * A-G. This is the semantic gate: keep it only if it actually reads like a
+ * chord symbol.
+ *
+ *   - Exact embedded text has no misreads, so it must parse as a real chord
+ *     (isLikelyChord). Title/lyric words are dropped.
+ *   - OCR can mangle a real chord ("Fsus2" -> "F5u52"), so a SHORT, root-led
+ *     token with no long letter run is kept for the user to review, while
+ *     word-shaped tokens ("Amazing") are still dropped.
+ */
+export function isChordCandidate(token, { fromOcr = false } = {}) {
+  const t = (token || "").trim();
+  if (!t) return false;
+  if (isLikelyChord(t)) return true;
+  if (!fromOcr) return false;                 // exact text → title/lyric, not a chord
+  const parsed = parseChord(t);
+  if (!parsed) return false;                  // doesn't even start with a root note
+  if (t.length > 6) return false;             // long colored words are titles/lyrics
+  if (/[A-Za-z]{4,}/.test(t)) return false;   // 4+ letters in a row = a word
+  return true;                                // short root-led garbage → likely a misread chord
+}
+
+/**
  * True when `token` is chord material that carries no root of its own — the
  * pieces a detector splits a symbol into: "m", "M", "♯", "b", "sus4", "7",
  * "add9". Used to tell a genuine fragment ("D" + "M") apart from a blob that

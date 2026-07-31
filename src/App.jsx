@@ -10,7 +10,7 @@ import ThemeToggle from "./components/ThemeToggle.jsx";
 import { detectChords, planTransposition, replanTransposition } from "./lib/detect.js";
 import { overlayTransposedChords } from "./lib/pdfOverlay.js";
 import { BUILTIN_FONTS, loadBuiltinFont } from "./lib/fonts.js";
-import { keyPrefersFlats, transposeChord, simplifyChord, toNashville, capoSuggestions } from "./lib/theory.js";
+import { keyPrefersFlats, transposeChord, simplifyChord, toNashville, capoSuggestions, isLikelyChord } from "./lib/theory.js";
 import { toChordPro } from "./lib/chordpro.js";
 import { mergePdfs } from "./lib/pdfMerge.js";
 import { printPdf } from "./lib/printPdf.js";
@@ -60,8 +60,11 @@ export default function App() {
   const [colors, setColors] = useState([[170, 0, 0]]);
   const [colorAuto, setColorAuto] = useState(true);
   const [dpi, setDpi] = useState(150);
-  const [topMargin, setTopMargin] = useState(0.12);
-  const [marginFirstPage, setMarginFirstPage] = useState(false);
+  // 0 by default: titles are now dropped semantically (isChordCandidate), so we
+  // no longer need to blank out the top of the page — doing that used to skip
+  // real chords sitting just under the title. Users can still set a margin.
+  const [topMargin, setTopMargin] = useState(0);
+  const [marginFirstPage, setMarginFirstPage] = useState(true);
 
   /* ---------------- output settings ---------------- */
   const [fontId, setFontId] = useState(BUILTIN_FONTS[0].id);
@@ -209,6 +212,8 @@ export default function App() {
   }
 
   function computeNewText(oldText, over = {}) {
+    // Don't transpose non-chords (title/lyric words that happen to start A-G).
+    if (!isLikelyChord(oldText)) return oldText;
     const o = planOptions(over);
     const source = o.simplify ? simplifyChord(oldText) : oldText;
     return o.nashvilleKey
@@ -306,7 +311,14 @@ export default function App() {
     if (!file) return;
     setStage(STAGES.LOADING);
     setLoadingText("Reading chord symbols…");
-    setLoadingProgress(0);
+    setLoadingProgress(0.04);
+    // Detection can't report fine-grained sub-page progress, so a page-based
+    // percentage would sit frozen (e.g. at 50%) on a single-page PDF. Trickle
+    // the bar toward a ceiling so it always reads as "working"; real page
+    // completions below push it forward, and we snap to 100% when done.
+    const trickle = setInterval(() => {
+      setLoadingProgress((p) => (p == null ? p : Math.min(0.92, p + (0.92 - p) * 0.08)));
+    }, 180);
     try {
       const semis = mode === "semitones" ? Number(semitones) : intervalSemitones;
       if (semis === null || Number.isNaN(semis)) throw new Error("Pick both a From and To key first.");
@@ -321,7 +333,8 @@ export default function App() {
         marginFirstPageOnly: marginFirstPage,
         onProgress: (msg, i, n) => {
           setLoadingText(msg);
-          setLoadingProgress(n ? (i + 0.5) / n : null);
+          // Only ever move the bar forward.
+          if (n) setLoadingProgress((p) => Math.max(p ?? 0, i / n));
         },
       });
 
@@ -334,6 +347,8 @@ export default function App() {
       const o = { simplify, nashvilleKey: outputMode === "nashville" ? (fromKey || "C") : null };
       const effFlats = enharmonic === "auto" ? preferFlats : enharmonic === "flats";
       const planned = planTransposition(boxes, semis, effFlats, o);
+      clearInterval(trickle);
+      setLoadingProgress(1);
       setPlan(planned);
       setDetectMeta(meta);
       setHistory({ past: [], future: [] });
@@ -347,6 +362,7 @@ export default function App() {
         settings: { mode, minor, fromIdx, toIdx, semitones },
       });
     } catch (err) {
+      clearInterval(trickle);
       console.error(err);
       setError(err.message || "Something went wrong reading that PDF.");
       setStage(STAGES.ERROR);
@@ -369,6 +385,11 @@ export default function App() {
   function handleAddChord(box, text) {
     pushHistory(plan);
     setPlan((prev) => [...prev, { box, oldText: text, newText: computeNewText(text) }]);
+  }
+
+  function handleDeleteChord(index) {
+    pushHistory(plan);
+    setPlan((prev) => prev.filter((_, i) => i !== index));
   }
 
   function applyBulkReplace() {
@@ -628,7 +649,7 @@ export default function App() {
               </div>
 
               <div className="field field-wide">
-                <label className="field-label">Chord color{colors.length > 1 ? "s" : ""}</label>
+                <label className="field-label">Chord color{colors.length > 1 ? "s" : ""} <span className="hint">(scanned PDFs + output)</span></label>
                 <ColorPicker file={file} colors={colors} onColorsChange={setColors}
                              auto={colorAuto} onAutoChange={setColorAuto} />
               </div>
@@ -639,7 +660,7 @@ export default function App() {
               </div>
 
               <div className="field">
-                <label className="field-label" htmlFor="marginInput">Header margin <span className="hint">(0–1)</span></label>
+                <label className="field-label" htmlFor="marginInput">Header margin <span className="hint">(0 = scan whole page)</span></label>
                 <input id="marginInput" type="number" step="0.01" className="select" value={topMargin} onChange={(e) => setTopMargin(e.target.value)} />
                 <label className="checkbox-inline" style={{ marginTop: 6 }}>
                   <input type="checkbox" checked={marginFirstPage} onChange={(e) => setMarginFirstPage(e.target.checked)} />
@@ -716,22 +737,37 @@ export default function App() {
 
           {stage === STAGES.LOADING && (
             <div className="loading-state">
-              {loadingProgress === null ? (
-                <div className="spinner" aria-hidden="true" />
-              ) : (
-                <div className="progress-ring-wrap" aria-hidden="true">
-                  <svg viewBox="0 0 64 64" className="progress-ring">
-                    <circle cx="32" cy="32" r="27" className="progress-ring-track" />
-                    <circle
-                      cx="32" cy="32" r="27"
-                      className="progress-ring-fill"
-                      style={{ strokeDasharray: `${2 * Math.PI * 27}`, strokeDashoffset: `${2 * Math.PI * 27 * (1 - loadingProgress)}` }}
-                    />
-                  </svg>
-                  <span className="progress-ring-label">{Math.round(loadingProgress * 100)}%</span>
+              <div className="scan-visual" aria-hidden="true">
+                <div className="scan-sheet">
+                  <div className="scan-row">
+                    <span className="scan-chord" style={{ animationDelay: "0s" }} />
+                    <span className="scan-chord" style={{ width: 16, animationDelay: ".3s" }} />
+                    <span className="scan-chord" style={{ width: 26, marginLeft: "auto", animationDelay: ".6s" }} />
+                  </div>
+                  <span className="scan-line" style={{ width: "92%" }} />
+                  <span className="scan-line" style={{ width: "78%" }} />
+                  <div className="scan-row">
+                    <span className="scan-chord" style={{ width: 20, animationDelay: ".9s" }} />
+                    <span className="scan-chord" style={{ width: 14, marginLeft: 34, animationDelay: "1.2s" }} />
+                  </div>
+                  <span className="scan-line" style={{ width: "86%" }} />
+                  <span className="scan-line" style={{ width: "64%" }} />
+                  <span className="scan-beam" />
                 </div>
+              </div>
+
+              <div className={`scan-progress${loadingProgress === null ? " is-indeterminate" : ""}`}>
+                <div className="scan-progress-bar"
+                     style={loadingProgress === null ? undefined : { width: `${Math.round(loadingProgress * 100)}%` }} />
+              </div>
+
+              <p className="loading-title">
+                {loadingText}
+                <span className="loading-dots"><i /><i /><i /></span>
+              </p>
+              {loadingProgress !== null && (
+                <span className="scan-percent">{Math.round(loadingProgress * 100)}%</span>
               )}
-              <p>{loadingText}</p>
             </div>
           )}
 
@@ -763,8 +799,9 @@ export default function App() {
                 </div>
               ) : (
                 <div className="info-banner">
-                  This PDF has a real text layer, so chords were read <strong>exactly</strong> — no OCR involved.
-                  Still worth a skim: non-chord colored text can slip in.
+                  This PDF has a real text layer, so chords were read <strong>exactly</strong> from the
+                  text — no OCR, no color guessing. Symbols are identified by chord spelling and font,
+                  so it works across MuseScore, Finale, Sibelius, Dorico and more. A quick skim is still worth it.
                 </div>
               )}
 
@@ -779,9 +816,9 @@ export default function App() {
               </div>
 
               {resultView === "list" ? (
-                <ChordList items={plan} onEdit={handleEditChord} />
+                <ChordList items={plan} onEdit={handleEditChord} onDelete={handleDeleteChord} />
               ) : (
-                <FileOverlay file={file} plan={plan} onEdit={handleEditChord} onAdd={handleAddChord} />
+                <FileOverlay file={file} plan={plan} onEdit={handleEditChord} onAdd={handleAddChord} onDelete={handleDeleteChord} />
               )}
 
               <button className="btn btn-primary btn-full btn-lg" onClick={handleGenerate}>
@@ -883,7 +920,7 @@ export default function App() {
 }
 
 /** Small wrapper that reads the file's bytes once for OverlayReview. */
-function FileOverlay({ file, plan, onEdit, onAdd }) {
+function FileOverlay({ file, plan, onEdit, onAdd, onDelete }) {
   const [bytes, setBytes] = useState(null);
   useEffect(() => {
     let cancelled = false;
@@ -891,5 +928,5 @@ function FileOverlay({ file, plan, onEdit, onAdd }) {
     return () => { cancelled = true; };
   }, [file]);
   if (!bytes) return <div className="loading-state" style={{ minHeight: 200 }}><div className="spinner" /></div>;
-  return <OverlayReview fileBytes={bytes} plan={plan} onEdit={onEdit} onAdd={onAdd} />;
+  return <OverlayReview fileBytes={bytes} plan={plan} onEdit={onEdit} onAdd={onAdd} onDelete={onDelete} />;
 }

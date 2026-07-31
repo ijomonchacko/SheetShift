@@ -1,9 +1,9 @@
 import { loadPdf, renderPageToCanvas } from "./pdfjsSetup.js";
 import { detectBoxes } from "./colorMask.js";
 import { detectBoxesOffThread } from "./maskWorkerClient.js";
-import { extractColoredTokens } from "./embeddedText.js";
+import { extractChordTokens } from "./embeddedText.js";
 import { ocrBox } from "./ocr.js";
-import { transposeChord, simplifyChord, toNashville } from "./theory.js";
+import { transposeChord, simplifyChord, toNashville, isLikelyChord, isChordCandidate } from "./theory.js";
 import { mergeSplitTokens } from "./ocrRepair.js";
 
 /**
@@ -36,7 +36,7 @@ export async function detectChords(arrayBuffer, chordColors, opts = {}) {
   const {
     scale = 150 / 72,
     topMarginRatio = 0.12,
-    marginFirstPageOnly = false,
+    marginFirstPageOnly = true,
     preferEmbeddedText = true,
     excludeRegions = [], // [{x0,y0,x1,y1}] in FRACTIONAL page coords
     onProgress = () => {},
@@ -51,31 +51,33 @@ export async function detectChords(arrayBuffer, chordColors, opts = {}) {
   let usedOcr = false;
 
   for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-    onProgress(`Rendering page ${pageNum} of ${numPages}…`, pageNum - 1, numPages);
-    const { canvas, page } = await renderPageToCanvas(pdfDoc, pageNum, scale);
+    onProgress(`Reading page ${pageNum} of ${numPages}…`, pageNum - 1, numPages);
+    const page = await pdfDoc.getPage(pageNum);
 
-    const marginRatio = marginFirstPageOnly && pageNum > 1 ? 0 : topMarginRatio;
-    const topMarginPx = Math.round(canvas.height * marginRatio);
+    const marginRatio = pageTopMarginRatio(pageNum, topMarginRatio, marginFirstPageOnly);
 
-    // PDF page size in points, straight from pdf.js's unscaled viewport
+    // PDF page size in points, straight from pdf.js's unscaled viewport, plus
+    // the scaled viewport so device-pixel boxes map back to points without a
+    // rendered canvas (text-layer pages skip rendering entirely).
     const unscaled = page.getViewport({ scale: 1 });
     const pw = unscaled.width, ph = unscaled.height;
-    const sx = pw / canvas.width, sy = ph / canvas.height;
+    const scaled = page.getViewport({ scale });
+    const sx = pw / scaled.width, sy = ph / scaled.height;
     const toPdfBox = (b, text, confidence, method) => ({
       text,
       confidence,
       method,
       x0: b.x * sx,
       x1: (b.x + b.w) * sx,
-      y0: ph - (b.y + b.h) * sy, // flip: canvas is top-down, PDF points bottom-up
+      y0: ph - (b.y + b.h) * sy, // flip: device is top-down, PDF points bottom-up
       y1: ph - b.y * sy,
       pageIndex: pageNum - 1,
     });
 
-    // ---------- 1. embedded text layer (exact, no OCR) ----------
+    // ---------- 1. embedded text layer (exact, color-independent) ----------
     if (preferEmbeddedText) {
-      const { items, textLength } = await extractColoredTokens(page, canvas, scale, colors, {
-        topMarginPx,
+      const { items, textLength } = await extractChordTokens(page, scale, {
+        topMarginRatio: marginRatio,
       });
       if (textLength >= 20) {
         // This page has a real text layer — trust it entirely. Notation
@@ -83,14 +85,18 @@ export async function detectChords(arrayBuffer, chordColors, opts = {}) {
         // "sus2", "A" + "m", "F#" + "m"), so the same fragment-merging
         // used for OCR applies here too.
         const pageBoxes = items.map((it) => toPdfBox(it, it.text, 100, "text"));
-        allBoxes.push(...mergeSplitTokens(pageBoxes, 1.2));
+        const merged = mergeSplitTokens(pageBoxes, 1.2);
+        allBoxes.push(...merged.filter((b) => isChordCandidate(b.text)));
         continue;
       }
       // else: scanned/flattened page → OCR below.
     }
 
-    // ---------- 2. OCR fallback ----------
+    // ---------- 2. OCR fallback (scanned/flattened pages) ----------
     usedOcr = true;
+    onProgress(`Rendering page ${pageNum} of ${numPages}…`, pageNum - 1, numPages);
+    const { canvas } = await renderPageToCanvas(pdfDoc, pageNum, scale);
+    const topMarginPx = Math.round(canvas.height * marginRatio);
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const pxExcludeRegions = excludeRegions.map((r) => ({
@@ -126,10 +132,14 @@ export async function detectChords(arrayBuffer, chordColors, opts = {}) {
       if (!text) continue;
       pageBoxes.push(toPdfBox(b, text, confidence, "ocr"));
     }
-    allBoxes.push(...mergeSplitTokens(pageBoxes));
+    allBoxes.push(...mergeSplitTokens(pageBoxes).filter((b) => isChordCandidate(b.text, { fromOcr: true })));
   }
 
   return { boxes: allBoxes, numPages, usedOcr };
+}
+
+export function pageTopMarginRatio(pageNum, topMarginRatio, marginFirstPageOnly) {
+  return marginFirstPageOnly && pageNum > 1 ? 0 : topMarginRatio;
 }
 
 /**
@@ -147,6 +157,12 @@ export async function detectChords(arrayBuffer, chordColors, opts = {}) {
 export function planTransposition(boxes, semitones, preferFlats, options = {}) {
   const { simplify = false, nashvilleKey = null } = options;
   return boxes.map((box) => {
+    // Only transpose tokens that actually parse as chords. Colored title or
+    // lyric words (e.g. "Amazing", "Glory") start with A-G and would otherwise
+    // have their first letter transposed. Leave them untouched.
+    if (!isLikelyChord(box.text)) {
+      return { box, oldText: box.text, newText: box.text };
+    }
     const source = simplify ? simplifyChord(box.text) : box.text;
     const newText = nashvilleKey
       ? toNashville(source, nashvilleKey)
@@ -159,6 +175,9 @@ export function planTransposition(boxes, semitones, preferFlats, options = {}) {
 export function replanTransposition(plan, semitones, preferFlats, options = {}) {
   const { simplify = false, nashvilleKey = null } = options;
   return plan.map((item) => {
+    if (!isLikelyChord(item.oldText)) {
+      return { ...item, newText: item.oldText };
+    }
     const source = simplify ? simplifyChord(item.oldText) : item.oldText;
     const newText = nashvilleKey
       ? toNashville(source, nashvilleKey)

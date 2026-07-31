@@ -1,39 +1,45 @@
 // Embedded-text chord detection: for digitally-exported PDFs (MuseScore,
-// Finale, Sibelius…) the chord symbols exist as real text in the PDF. We
-// read them EXACTLY via pdf.js getTextContent() — no OCR, no misreads —
-// and use the already-rendered canvas only to check each token's COLOR
-// (pdf.js does not expose per-glyph fill color through getTextContent).
+// Finale, Sibelius, Dorico, LilyPond, …) the chord symbols exist as real
+// text in the PDF. We read them EXACTLY via pdf.js getTextContent() — no OCR,
+// no misreads — and decide which tokens are chords WITHOUT relying on color.
+//
+// How the classification works (color-independent):
+//   1. Chord grammar — a token must parse as a real chord symbol and start
+//      with an uppercase root A–G (isChordToken). This alone rejects almost
+//      all lyrics/titles/directions.
+//   2. Font+size clustering — in every engraving app chord symbols are drawn
+//      in a consistent font and size that differs from lyrics, titles and
+//      performance directions. We keep the grammar-valid tokens that live in
+//      the style bucket(s) dominated by chords, which removes the rare lyric
+//      word ("A", "Add") that happens to look like a chord.
 //
 // A page with no meaningful text layer falls back to the OCR pipeline.
 
 import { pdfjsLib } from "./pdfjsSetup.js";
-import { maskForColors } from "./colorMask.js";
+import { isChordToken } from "./theory.js";
+
+// Visible glyph height as a fraction of the em box — used to place the box
+// bottom on the text baseline so overlaid replacements line up.
+const CAP_HEIGHT = 0.72;
 
 /**
- * Extract colored text tokens from one page.
+ * Extract chord tokens from one page's text layer.
  *
- * @param page       pdf.js page object
- * @param canvas     the page already rendered at `scale` (top-down pixels)
- * @param scale      render scale used for `canvas`
- * @param colors     [[r,g,b], …] 0-255 chord colors to match
- * @param opts       { tol, minColorFraction, topMarginPx }
- * @returns          { items: [{text, x, y, w, h}], textLength }
- *                   x/y/w/h in canvas pixel space (top-down)
+ * @param page   pdf.js page object
+ * @param scale  render scale that the caller maps boxes back through
+ * @param opts   { topMarginRatio }  fraction of page height to ignore at top
+ * @returns      { items: [{text, x, y, w, h}], textLength }
+ *               x/y/w/h in device pixel space at `scale` (top-down); box
+ *               bottom (y+h) sits on the glyph baseline.
  */
-export async function extractColoredTokens(page, canvas, scale, colors, opts = {}) {
-  // minColorFraction: colored glyphs measure ~0.15–0.25 ink coverage in
-  // their box; non-matching (black) text measures ~0. 0.10 splits the two
-  // clusters with margin on both sides.
-  const { tol = 60, minColorFraction = 0.1, topMarginPx = 0 } = opts;
-
-  const content = await page.getTextContent();
+export async function extractChordTokens(page, scale, opts = {}) {
+  const { topMarginRatio = 0 } = opts;
   const viewport = page.getViewport({ scale });
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const mask = maskForColors(imageData, colors, tol);
+  const topMarginPx = Math.round(viewport.height * topMarginRatio);
+  const content = await page.getTextContent();
 
   let textLength = 0;
-  const items = [];
+  const toks = [];
 
   for (const item of content.items) {
     const str = (item.str || "").trim();
@@ -42,55 +48,62 @@ export async function extractColoredTokens(page, canvas, scale, colors, opts = {
 
     // Device-space transform for this text run.
     const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
-    const fontH = Math.hypot(tx[2], tx[3]);       // device font height
-    const runW = item.width * scale;              // device run width
+    const fontH = Math.hypot(tx[2], tx[3]);   // device font height (px)
+    const runW = item.width * scale;          // device run width (px)
     const xLeft = tx[4];
-    const yBase = tx[5];                          // baseline, top-down space
-    const top = yBase - fontH;
-    if (top < topMarginPx) continue;
+    const yBase = tx[5];                       // baseline, top-down space
+    if (yBase - fontH < topMarginPx) continue; // inside the header margin
 
-    // Split the run into whitespace-separated tokens, positioning each by
-    // its character offset (monospace-ish approximation is fine here — the
-    // color check + tight mask bbox recovers the true box below).
+    // Position each whitespace-separated token by its character offset. Chord
+    // symbols are almost always their own run, so this is exact for them.
     const chars = item.str.length || 1;
     const perChar = runW / chars;
     let idx = 0;
-    for (const raw of item.str.split(/(\s+)/)) {
-      if (!raw.trim()) { idx += raw.length; continue; }
+    for (const seg of item.str.split(/(\s+)/)) {
+      const t = seg.trim();
+      if (!t) { idx += seg.length; continue; }
       const tokX = xLeft + idx * perChar;
-      const tokW = raw.length * perChar;
-      idx += raw.length;
-
-      // Color check: fraction of mask pixels inside the token's box.
-      const x0 = Math.max(0, Math.floor(tokX));
-      const x1 = Math.min(canvas.width, Math.ceil(tokX + tokW));
-      const y0 = Math.max(0, Math.floor(top));
-      const y1 = Math.min(canvas.height, Math.ceil(yBase + fontH * 0.25));
-      if (x1 <= x0 || y1 <= y0) continue;
-
-      let on = 0, total = 0;
-      // Tight bbox of matching pixels (better than the estimated box).
-      let mnX = Infinity, mxX = -Infinity, mnY = Infinity, mxY = -Infinity;
-      for (let y = y0; y < y1; y++) {
-        for (let x = x0; x < x1; x++) {
-          total++;
-          if (mask[y * canvas.width + x]) {
-            on++;
-            if (x < mnX) mnX = x;
-            if (x > mxX) mxX = x;
-            if (y < mnY) mnY = y;
-            if (y > mxY) mxY = y;
-          }
-        }
-      }
-      if (total === 0 || on / total < minColorFraction) continue;
-
-      items.push({
-        text: raw.trim(),
-        x: mnX, y: mnY, w: mxX - mnX + 1, h: mxY - mnY + 1,
+      const tokW = seg.length * perChar;
+      idx += seg.length;
+      const capH = fontH * CAP_HEIGHT;
+      toks.push({
+        text: t,
+        style: `${item.fontName}|${Math.round(fontH)}`,
+        x: tokX,
+        y: yBase - capH,
+        w: tokW,
+        h: capH,
+        isChord: isChordToken(t),
       });
     }
   }
+
+  // Which text style(s) carry the chords? A style bucket dominated by
+  // grammar-valid chords is a chord style; lyric/title/direction buckets are
+  // ~0% chords and get dropped.
+  const buckets = new Map();
+  let totalChords = 0;
+  for (const tk of toks) {
+    let b = buckets.get(tk.style);
+    if (!b) { b = { total: 0, chords: 0 }; buckets.set(tk.style, b); }
+    b.total++;
+    if (tk.isChord) { b.chords++; totalChords++; }
+  }
+  const chordStyles = new Set();
+  for (const [style, b] of buckets) {
+    if (b.chords >= 1 && b.chords / b.total >= 0.5) chordStyles.add(style);
+  }
+
+  let picked = toks.filter((tk) => tk.isChord && chordStyles.has(tk.style));
+  // Fallback: if style clustering can't account for most chords (e.g. a chart
+  // that sets chords in the same font+size as its lyrics), keep every
+  // grammar-valid token rather than discard real chords — review handles the
+  // occasional lyric-word false positive.
+  if (totalChords > 0 && picked.length < totalChords * 0.6) {
+    picked = toks.filter((tk) => tk.isChord);
+  }
+
+  const items = picked.map((tk) => ({ text: tk.text, x: tk.x, y: tk.y, w: tk.w, h: tk.h }));
 
   // Reading order: rows top-to-bottom, then left-to-right.
   items.sort((a, b) => (Math.abs(a.y - b.y) > Math.max(a.h, b.h) ? a.y - b.y : a.x - b.x));

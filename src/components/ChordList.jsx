@@ -11,7 +11,7 @@ function isLowConfidence(item) {
   return item.box?.method === "ocr" && (item.box?.confidence ?? 100) < 85;
 }
 
-export default function ChordList({ items, onEdit }) {
+export default function ChordList({ items, onEdit, onDelete }) {
   const [sortMode, setSortMode] = useState("reading"); // reading | confidence
   const listRef = useRef(null);
 
@@ -62,14 +62,14 @@ export default function ChordList({ items, onEdit }) {
       <div className="chord-list" role="list" ref={listRef} onKeyDown={handleListKeyDown}>
         {order.map(({ item, i }) => (
           <ChordChip key={i} item={item} index={i} suspect={isSuspect(item)}
-                     lowConf={isLowConfidence(item)} onEdit={onEdit} />
+                     lowConf={isLowConfidence(item)} onEdit={onEdit} onDelete={onDelete} />
         ))}
       </div>
     </div>
   );
 }
 
-function ChordChip({ item, index, suspect, lowConf, onEdit }) {
+function ChordChip({ item, index, suspect, lowConf, onEdit, onDelete }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.oldText);
 
@@ -98,6 +98,18 @@ function ChordChip({ item, index, suspect, lowConf, onEdit }) {
         />
         <span className="chord-arrow">→</span>
         <span className="chord-new">{item.newText}</span>
+        {onDelete && (
+          <button
+            type="button"
+            className="chord-delete-btn"
+            title="Delete this chord"
+            aria-label="Delete this chord"
+            // onMouseDown so it fires before the input's onBlur cancels the edit
+            onMouseDown={(e) => { e.preventDefault(); setEditing(false); onDelete(index); }}
+          >
+            ✕
+          </button>
+        )}
       </div>
     );
   }

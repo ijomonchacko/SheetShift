@@ -74,11 +74,18 @@ export default function Docs() {
             <h2>How detection works</h2>
             <p>
               SheetShift uses a two-tier pipeline. For digitally-exported PDFs
-              (MuseScore, Finale, Sibelius…) it reads the chart's <strong>embedded
-              text layer directly</strong> — chord symbols come back exactly as
-              printed, with no OCR involved. The rendered page is used only to
-              check each token's color, so lyrics and headings are ignored. You'll
-              see an <em>"Exact · embedded text"</em> badge when this path was used.
+              (MuseScore, Finale, Sibelius, Dorico, LilyPond…) it reads the
+              chart's <strong>embedded text layer directly</strong> — chord
+              symbols come back exactly as printed, with no OCR involved. Each
+              text token is classified as a chord by two color-independent
+              signals: it must <strong>parse as a real chord symbol</strong>
+              (an uppercase root A–G plus a valid suffix), and it must sit in
+              the <strong>font and size the chart uses for chords</strong>,
+              which every notation app keeps distinct from lyrics, titles and
+              directions. Because nothing depends on ink color, detection works
+              the same whether your chords are black, maroon, blue or anything
+              else. You'll see an <em>"Exact · embedded text"</em> badge when
+              this path was used.
             </p>
             <p>
               For scanned or flattened PDFs with no text layer, it falls back to
@@ -86,7 +93,9 @@ export default function Docs() {
               chord color (maroon by default — use the eyedropper or auto-detect
               if yours differs), group them into tokens, and read each one with
               OCR. Every OCR read carries a confidence score, and low-confidence
-              reads are flagged for review.
+              reads are flagged for review. The chord color set in <em>Advanced</em>
+              is used only for this scanned-PDF path and for the color of the
+              chords SheetShift draws into the output.
             </p>
             <div className="docs-callout">
               The first OCR run in a browser session downloads the language model
@@ -106,8 +115,10 @@ export default function Docs() {
             </p>
             <p>
               A good habit: compare the chord <em>count</em> per page against your
-              original. A missing chord usually means its color didn't match (see
-              the eyedropper) or it sits inside the header margin (see below).
+              original. On text-layer PDFs a missing chord usually means it was set
+              in an unusual font; on scanned PDFs it usually means its color didn't
+              match (see the eyedropper). Either way you can click any empty spot in
+              the on-page view to add it.
             </p>
           </section>
 
@@ -186,18 +197,18 @@ export default function Docs() {
                 </tr>
                 <tr>
                   <td>Chord color</td>
-                  <td>The color the detector looks for <em>and</em> draws with. Use the eyedropper to click a chord in your chart for an exact match.</td>
+                  <td>The color the detector looks for on <em>scanned</em> PDFs, <em>and</em> the color new chords are drawn with. Text-layer PDFs don't use it. Use the eyedropper to match your chart.</td>
                   <td>Maroon</td>
                 </tr>
                 <tr>
                   <td>Scan DPI</td>
-                  <td>Rendering resolution for detection. Higher catches small print but is slower. 150 suits most charts; try 200–300 for dense or scanned pages.</td>
+                  <td>Rendering resolution for scanned-PDF detection. Higher catches small print but is slower. 150 suits most charts; try 200–300 for dense or scanned pages.</td>
                   <td>150</td>
                 </tr>
                 <tr>
                   <td>Header margin</td>
-                  <td>Fraction of the page height (0–1) ignored at the top, so colored titles/headers aren't misread as chords.</td>
-                  <td>0.12</td>
+                  <td>Fraction of the page height (0–1) ignored at the top. Usually unneeded now that titles are filtered by chord spelling and font; raise it only if a title still slips through.</td>
+                  <td>0</td>
                 </tr>
               </tbody>
             </table>
@@ -269,14 +280,17 @@ export default function Docs() {
             <dl className="docs-faqlist">
               <dt>No chords were found</dt>
               <dd>
-                Your chart's chord color probably isn't maroon. Open
+                On a text-layer PDF this is rare — check that it really has
+                selectable text (try selecting a chord in a PDF viewer). On a
+                <em> scanned</em> PDF, the chord color probably isn't maroon: open
                 <em> Advanced → Chord color</em>, click <em>Pick from PDF</em>, and
                 click directly on a chord symbol in the page preview.
               </dd>
               <dt>Some chords are missing</dt>
               <dd>
-                Raise the Scan DPI to 200–300 (small symbols), or lower the header
-                margin if chords sit very close to the top of the page.
+                On text-layer PDFs, a chord set in an unusual font may be skipped —
+                click the empty spot in the on-page view to add it. On scanned PDFs,
+                raise the Scan DPI to 200–300 for small symbols.
               </dd>
               <dt>A chord was misread</dt>
               <dd>
@@ -285,8 +299,10 @@ export default function Docs() {
               </dd>
               <dt>Titles or headings got detected as chords</dt>
               <dd>
-                If they're the same color as your chords, raise the header margin
-                (e.g. 0.15–0.2) so the top of the page is ignored.
+                Titles are normally filtered out automatically (they don't spell a
+                chord and use a different font). If one still slips through, click it
+                in the preview and delete it, or raise the header margin (e.g. 0.12)
+                so the top of the page is ignored.
               </dd>
               <dt>"Choose from this computer" shows an error</dt>
               <dd>
@@ -304,7 +320,7 @@ export default function Docs() {
           <section id="limitations">
             <h2>Limitations</h2>
             <ul>
-              <li>Detection is OCR-based for every PDF — always use the preview step.</li>
+              <li>Text-layer PDFs are read exactly; only scanned/flattened PDFs use OCR. Either way, always skim the preview step.</li>
               <li>Large, high-DPI pages process on your CPU, so very long charts take longer.</li>
               <li>Nothing is saved between visits — download your file before closing the tab.</li>
               <li>Chord symbols inside images-of-images (e.g. a photo of a photocopied chart) may need a higher DPI and more corrections.</li>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {
-  transposeChord, isLikelyChord, simplifyChord, toNashville, capoSuggestions,
+  transposeChord, isLikelyChord, simplifyChord, toNashville, capoSuggestions, isChordCandidate, isChordToken,
 } from "../src/lib/theory.js";
 
 export const tests = [
@@ -47,5 +47,29 @@ export const tests = [
     const eb = capoSuggestions("E♭", false, 5);
     assert.deepEqual(eb[0], { capo: 1, shape: "D" });
     assert.ok(eb.some((s) => s.capo === 3 && s.shape === "C"));
+  }],
+  ["isChordCandidate keeps real chords", () => {
+    for (const t of ["C", "Am7", "F♯m7b5", "G/B", "Csus4", "D/F#"]) {
+      assert.ok(isChordCandidate(t), t);
+      assert.ok(isChordCandidate(t, { fromOcr: true }), `${t} (ocr)`);
+    }
+  }],
+  ["isChordCandidate drops title/lyric words from exact text", () => {
+    for (const t of ["Amazing", "Grace", "Chorus", "Before", "Ending", "Glory"]) {
+      assert.ok(!isChordCandidate(t), t);
+      assert.ok(!isChordCandidate(t, { fromOcr: true }), `${t} (ocr)`);
+    }
+  }],
+  ["isChordCandidate keeps short OCR misreads for review", () => {
+    // Short, root-led garbage is likely a mangled chord — keep it (flagged).
+    for (const t of ["F5u52", "Am?q", "G7b"]) {
+      assert.ok(isChordCandidate(t, { fromOcr: true }), `${t} (ocr)`);
+      assert.ok(!isChordCandidate(t), `${t} (exact should drop)`);
+    }
+  }],
+  ["isChordToken requires an uppercase root", () => {
+    for (const t of ["C", "Am7", "F#m", "G/B", "Csus4", "D/F#"]) assert.ok(isChordToken(t), t);
+    // lowercase lyric words that would otherwise parse as chords
+    for (const t of ["am", "be", "g", "dad", "cage"]) assert.ok(!isChordToken(t), t);
   }],
 ];
