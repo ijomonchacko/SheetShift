@@ -93,7 +93,7 @@ export default function Wheel({ fromIdx, toIdx, minor, onSelect, onHover }) {
               onMouseLeave={() => onHover?.(null)}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(i); } }}
             />
-            <text x={mid.x} y={mid.y} className="wheel-label">{label}</text>
+            <text x={mid.x} y={mid.y} className="wheel-label" aria-hidden="true">{label}</text>
           </g>
         );
       })}

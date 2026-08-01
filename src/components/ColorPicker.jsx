@@ -60,19 +60,8 @@ export default function ColorPicker({ file, colors, onColorsChange }) {
     return () => { cancelled = true; };
   }, [eyeOpen, file]);
 
-  const setPrimary = (rgb) => {
-    // Replace the first color, keep any extras the user added.
-    onColorsChange([rgb, ...colors.slice(1)].slice(0, 3));
-  };
-  const addColor = (rgb) => {
-    const next = [...colors.filter((c) => rgbToHex(c) !== rgbToHex(rgb)), rgb].slice(-3);
-    onColorsChange(next);
-  };
-  const removeColor = (i) => {
-    if (colors.length <= 1) return;
-    onColorsChange(colors.filter((_, j) => j !== i));
-  };
-  const isActive = (rgb) => colors.some((c) => rgbToHex(c) === rgbToHex(rgb));
+  const setPrimary = (rgb) => onColorsChange([rgb]);
+  const isActive = (rgb) => rgbToHex(colors[0]) === rgbToHex(rgb);
 
   const commitHex = () => {
     const v = hexDraft.trim();
@@ -162,28 +151,6 @@ export default function ColorPicker({ file, colors, onColorsChange }) {
             </div>
             {detectMsg && <span className="color-detect-msg">{detectMsg}</span>}
           </div>
-
-          {(colors.length > 1 || colors.length < 3) && (
-            <div className="colorpick-section">
-              <span className="colorpick-heading">Match multiple colors <span className="hint">(optional)</span></span>
-              <div className="colorpick-multi">
-                {colors.map((c, i) => (
-                  <span key={i} className="color-swatch" style={{ background: rgbToHex(c) }} title={rgbToHex(c)}>
-                    {colors.length > 1 && (
-                      <button type="button" className="color-swatch-x" onClick={() => removeColor(i)}
-                              aria-label={`Remove ${rgbToHex(c)}`}>&times;</button>
-                    )}
-                  </span>
-                ))}
-                {colors.length < 3 && (
-                  <label className="color-add" title="Add another color to match">
-                    +
-                    <input type="color" hidden onChange={(e) => addColor(hexToRgb(e.target.value))} />
-                  </label>
-                )}
-              </div>
-            </div>
-          )}
 
           {eyeOpen && (
             <div className="colorpick-eye">

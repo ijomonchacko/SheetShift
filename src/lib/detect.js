@@ -1,9 +1,7 @@
 import { loadPdf, renderPageToCanvas } from "./pdfjsSetup.js";
-import { detectBoxes } from "./colorMask.js";
-import { detectBoxesOffThread } from "./maskWorkerClient.js";
 import { extractChordTokens } from "./embeddedText.js";
-import { ocrBox, ocrPageChords } from "./ocr.js";
-import { transposeChord, simplifyChord, toNashville, isLikelyChord, isChordCandidate } from "./theory.js";
+import { ocrPageChords } from "./ocr.js";
+import { transposeChord, simplifyChord, toNashville, isLikelyChord, isChordCandidate, isChordToken } from "./theory.js";
 import { mergeSplitTokens } from "./ocrRepair.js";
 
 /**
@@ -38,6 +36,8 @@ export async function detectChords(arrayBuffer, chordColors, opts = {}) {
     topMarginRatio = 0.12,
     marginFirstPageOnly = true,
     preferEmbeddedText = true,
+    strength = "balanced", // detection strength: precise | balanced | aggressive
+    maxPages = 50,         // cap pages scanned on very long PDFs
     excludeRegions = [], // [{x0,y0,x1,y1}] in FRACTIONAL page coords
     onProgress = () => {},
   } = opts;
@@ -50,8 +50,13 @@ export async function detectChords(arrayBuffer, chordColors, opts = {}) {
   const allBoxes = [];
   let usedOcr = false;
 
-  for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-    onProgress(`Reading page ${pageNum} of ${numPages}…`, pageNum - 1, numPages);
+  // Guard runaway work: OCR at 300 DPI is memory/CPU heavy, so cap how many
+  // pages we process on very long PDFs and report it to the UI.
+  const pagesToScan = Math.min(numPages, maxPages);
+  const truncated = numPages > pagesToScan ? pagesToScan : 0;
+
+  for (let pageNum = 1; pageNum <= pagesToScan; pageNum++) {
+    onProgress(`Reading page ${pageNum} of ${pagesToScan}…`, pageNum - 1, pagesToScan);
     const page = await pdfDoc.getPage(pageNum);
 
     const marginRatio = pageTopMarginRatio(pageNum, topMarginRatio, marginFirstPageOnly);
@@ -92,76 +97,43 @@ export async function detectChords(arrayBuffer, chordColors, opts = {}) {
       // else: scanned/flattened page → OCR below.
     }
 
-    // ---------- 2. OCR fallback (scanned/flattened pages) ----------
+    // ---------- 2. OCR (scanned / image pages with no text layer) ----------
+    // Read the WHOLE page and keep only the words that are real chords. This is
+    // color-independent and robust: unlike per-color pixel masking it never
+    // turns staff lines, note-name letters or other musical symbols into
+    // "chords". Chord text is small, so render the OCR pass at a higher DPI.
+    //
+    // Prefer the stronger ONNX PP-OCR engine; if its models can't load, fall
+    // back to the bundled Tesseract pipeline. Both return the same chord boxes.
     usedOcr = true;
-    onProgress(`Rendering page ${pageNum} of ${numPages}…`, pageNum - 1, numPages);
-    const { canvas } = await renderPageToCanvas(pdfDoc, pageNum, scale);
-    const topMarginPx = Math.round(canvas.height * marginRatio);
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const pxExcludeRegions = excludeRegions.map((r) => ({
-      x0: r.x0 * canvas.width, y0: r.y0 * canvas.height,
-      x1: r.x1 * canvas.width, y1: r.y1 * canvas.height,
+    onProgress(`Scanning page ${pageNum} of ${pagesToScan} for chords…`, pageNum - 1, pagesToScan);
+    const OCR_SCALE = Math.max(scale, 300 / 72);
+    const { canvas: ocrCanvas } = await renderPageToCanvas(pdfDoc, pageNum, OCR_SCALE);
+    const ocrTopMargin = Math.round(ocrCanvas.height * marginRatio);
+    // Lazy-load the heavy ONNX engine only when we actually hit an image page.
+    let words = null;
+    try {
+      const { tryOnnxPageChords } = await import("./onnxOcr.js");
+      words = await tryOnnxPageChords(ocrCanvas, { topMarginPx: ocrTopMargin, strength });
+    } catch {
+      words = null;
+    }
+    if (!words || words.length === 0) words = await ocrPageChords(ocrCanvas, { topMarginPx: ocrTopMargin, strength });
+    const osx = pw / ocrCanvas.width, osy = ph / ocrCanvas.height;
+    const wordBoxes = words.map((it) => ({
+      text: it.text,
+      confidence: it.confidence,
+      method: "ocr",
+      x0: it.x * osx,
+      x1: (it.x + it.w) * osx,
+      y0: ph - (it.y + it.h) * osy,
+      y1: ph - it.y * osy,
+      pageIndex: pageNum - 1,
     }));
-
-    // colorMask's thresholds were tuned against a ~150dpi render — scale
-    // them to whatever DPI was actually requested.
-    const REFERENCE_SCALE = 150 / 72;
-    const k = scale / REFERENCE_SCALE;
-    const boxOpts = {
-      topMarginPx,
-      excludeRegions: pxExcludeRegions,
-      dilateW: Math.max(6, Math.round(40 * k)),
-      dilateH: Math.max(4, Math.round(14 * k)),
-      minW: Math.max(6, Math.round(15 * k)),
-      minH: Math.max(6, Math.round(15 * k)),
-      rowTol: Math.max(40, Math.round(280 * k)),
-      gapSplit: Math.max(6, Math.round(25 * k)),
-    };
-
-    // Mask + component analysis runs off the main thread when possible so
-    // big pages don't freeze the UI; falls back to sync automatically.
-    const { boxes, mask } = await detectBoxesOffThread(imageData, colors, boxOpts)
-      .catch(() => detectBoxes(imageData, colors, boxOpts));
-
-    onProgress(`Reading chord symbols on page ${pageNum} of ${numPages}…`, pageNum - 1, numPages);
-    const pageBoxes = [];
-    for (let i = 0; i < boxes.length; i++) {
-      const b = boxes[i];
-      const { text, confidence } = await ocrBox(mask, canvas.width, canvas.height, b);
-      if (!text) continue;
-      pageBoxes.push(toPdfBox(b, text, confidence, "ocr"));
-    }
-    let pageResult = mergeSplitTokens(pageBoxes).filter((b) => isChordCandidate(b.text, { fromOcr: true }));
-
-    // Color-independent fallback: when no distinct-color chords were found the
-    // page is likely black-on-white notation (chords the same ink as the
-    // staff). Read the WHOLE page with OCR and keep the words that are real
-    // chords — no color required. Chord text is small, so re-render at a
-    // higher DPI for the OCR pass to improve recognition.
-    if (pageResult.length === 0) {
-      onProgress(`Scanning page ${pageNum} of ${numPages} for chords…`, pageNum - 1, numPages);
-      const OCR_SCALE = Math.max(scale, 300 / 72);
-      const { canvas: ocrCanvas } = await renderPageToCanvas(pdfDoc, pageNum, OCR_SCALE);
-      const ocrTopMargin = Math.round(ocrCanvas.height * marginRatio);
-      const words = await ocrPageChords(ocrCanvas, { topMarginPx: ocrTopMargin });
-      const osx = pw / ocrCanvas.width, osy = ph / ocrCanvas.height;
-      const wordBoxes = words.map((it) => ({
-        text: it.text,
-        confidence: it.confidence,
-        method: "ocr",
-        x0: it.x * osx,
-        x1: (it.x + it.w) * osx,
-        y0: ph - (it.y + it.h) * osy,
-        y1: ph - it.y * osy,
-        pageIndex: pageNum - 1,
-      }));
-      pageResult = mergeSplitTokens(wordBoxes).filter((b) => isChordCandidate(b.text, { fromOcr: true }));
-    }
-    allBoxes.push(...pageResult);
+    allBoxes.push(...wordBoxes.filter((b) => isChordToken(b.text)));
   }
 
-  return { boxes: allBoxes, numPages, usedOcr };
+  return { boxes: allBoxes, numPages, usedOcr, truncated };
 }
 
 export function pageTopMarginRatio(pageNum, topMarginRatio, marginFirstPageOnly) {

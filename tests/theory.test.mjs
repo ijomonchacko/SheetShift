@@ -72,4 +72,26 @@ export const tests = [
     // lowercase lyric words that would otherwise parse as chords
     for (const t of ["am", "be", "g", "dad", "cage"]) assert.ok(!isChordToken(t), t);
   }],
+  ["transpose edge cases: slash chords, suffixes, wraparound", () => {
+    assert.equal(transposeChord("C/E", 2, false), "D/F♯");   // bass moves too
+    assert.equal(transposeChord("Am7/G", 2, false), "Bm7/A");
+    assert.equal(transposeChord("Cmaj7", 2, false), "Dmaj7"); // quality preserved
+    assert.equal(transposeChord("F♯m7b5", 1, false), "Gm7b5");
+    assert.equal(transposeChord("B", 1, false), "C");         // wrap B→C
+    assert.equal(transposeChord("E", -1, false), "D♯");       // negative
+  }],
+  ["enharmonic spelling follows preferFlats", () => {
+    assert.equal(transposeChord("C", 1, true), "D♭");
+    assert.equal(transposeChord("C", 1, false), "C♯");
+  }],
+  ["Nashville numbers relative to key", () => {
+    assert.equal(toNashville("C", "C"), "1");
+    assert.equal(toNashville("F", "C"), "4");
+    assert.equal(toNashville("G", "C"), "5");
+    assert.equal(toNashville("Am", "C"), "6m");
+  }],
+  ["simplify strips extensions to the triad", () => {
+    assert.equal(simplifyChord("Cmaj9"), "C");
+    assert.equal(simplifyChord("Am7"), "Am");
+  }],
 ];

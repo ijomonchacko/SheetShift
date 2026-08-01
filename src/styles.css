@@ -103,8 +103,8 @@
   --err-bg: rgba(240, 106, 134, 0.10);
   --err-bd: rgba(240, 106, 134, 0.28);
 
-  --shadow-sm: 0 12px 36px -14px rgba(0, 0, 0, 0.85);
-  --shadow-md: 0 26px 70px -26px rgba(0, 0, 0, 0.95);
+  --shadow-sm: 0 8px 26px -16px rgba(0, 0, 0, 0.6);
+  --shadow-md: 0 20px 56px -28px rgba(0, 0, 0, 0.8);
   --glow-primary: 0 12px 34px -8px rgba(122, 114, 245, 0.45);
 
   --orb-1: rgba(94, 86, 244, 0.17);
@@ -128,6 +128,19 @@ html, body {
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Accessibility: a consistent, visible keyboard focus ring on every
+   interactive element (including the custom wheel wedges and toggles). */
+:where(a, button, input, select, textarea, summary, [tabindex], [role="button"], [role="tab"]):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+.wheel-wedge:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 
 /* drifting aurora orbs behind everything */
@@ -444,19 +457,27 @@ p { margin: 0; }
 .foot-link { color: var(--primary); text-decoration: none; font-weight: 550; }
 .foot-link:hover { text-decoration: underline; }
 
-.panel { display: flex; flex-direction: column; gap: 18px; }
+.panel { display: flex; flex-direction: column; gap: 16px; }
 .card {
   border-radius: var(--r-lg);
-  padding: 24px;
-  animation: riseIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  padding: 22px;
+  animation: riseIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 .panel-settings .card:nth-child(1) { animation-delay: 0.04s; }
-.panel-settings .card:nth-child(2) { animation-delay: 0.12s; }
-.panel-settings .card:nth-child(3) { animation-delay: 0.2s; }
-.panel-results { animation: riseIn 0.7s 0.15s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+.panel-settings .card:nth-child(2) { animation-delay: 0.11s; }
+.panel-settings .card:nth-child(3) { animation-delay: 0.18s; }
+.panel-settings .cta-block { animation: riseIn 0.55s 0.24s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+/* Subtle affordance: the card you're interacting with brightens its edge. */
+.panel-settings .card { transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+.panel-settings .card:focus-within { border-color: var(--border-strong); }
+/* Fade only (no transform) so it never interferes with the sticky pin. */
+.panel-results { animation: fadeIn 0.5s 0.15s ease backwards; }
 
+/* Card header: numbered step + title + one-line description for a clear,
+   scannable top-to-bottom hierarchy. */
+.card-head { margin-bottom: 18px; }
 .card-title {
-  margin: 0 0 16px;
+  margin: 0;
   font-size: 15.5px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -468,18 +489,24 @@ p { margin: 0; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 23px; height: 23px;
-  border-radius: 50%;
-  background: var(--accent-grad);
-  color: #fff;
-  font-size: 11.5px;
+  width: 22px; height: 22px;
+  border-radius: 7px;
+  background: var(--primary-soft);
+  border: 1px solid var(--glass-edge);
+  color: var(--primary);
+  font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
-  box-shadow: var(--glow-primary);
+}
+.card-desc {
+  margin: 7px 0 0 31px;   /* align under the title text, past the step chip */
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
 }
 .card-advanced summary { cursor: pointer; list-style: none; }
 .card-advanced summary::-webkit-details-marker { display: none; }
-.card-advanced:not([open]) .card-title { margin-bottom: 0; }
+.card-advanced[open] .advanced-summary { margin-bottom: 14px; }
 .advanced-summary { justify-content: flex-start; }
 .chev { display: inline-flex; color: var(--text-faint); transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); margin-left: auto; }
 .card-advanced[open] .chev { transform: rotate(180deg); }
@@ -998,16 +1025,26 @@ select.select:disabled { opacity: 0.5; cursor: not-allowed; }
    ------------------------------------------------------------ */
 .panel-results {
   min-height: 440px;
-  /* Keep the preview pinned in view while the taller settings column scrolls,
-     and let it use the full viewport height instead of collapsing to a small
-     box. Content that overflows scrolls inside the panel. */
+  /* On large screens the right-hand preview stays PINNED in the viewport while
+     the taller left settings column scrolls the page. It fills the available
+     height and scrolls its own overflow if the content is long. */
   position: sticky;
-  top: 92px;
+  top: 84px;
   align-self: start;
-  max-height: calc(100vh - 116px);
+  max-height: calc(100vh - 104px);
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }
+.panel-results::-webkit-scrollbar { width: 10px; }
+.panel-results::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.panel-results::-webkit-scrollbar-thumb:hover { background: var(--text-faint); background-clip: content-box; }
 /* The panel itself is the scroll container now, so inner regions expand to
    fill it instead of adding a second, cramped scrollbar. */
 .panel-results .chord-list { max-height: none; overflow: visible; }
@@ -1156,6 +1193,7 @@ select.select:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .result-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
 .result-tools { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.result-lowconf { color: var(--warn); font-weight: 650; }
 .tool-btn {
   width: 30px; height: 30px;
   display: inline-flex; align-items: center; justify-content: center;
@@ -1340,7 +1378,7 @@ select.select:disabled { opacity: 0.5; cursor: not-allowed; }
   background: var(--surface-2);
   cursor: crosshair;
 }
-.overlay-canvas { display: block; }
+.overlay-canvas { display: block; max-width: 100%; }
 .overlay-box {
   position: absolute;
   border: 2px solid rgba(122, 114, 245, 0.8);
@@ -1650,6 +1688,11 @@ select.select:disabled { opacity: 0.5; cursor: not-allowed; }
   .pdfpreview-stage { height: clamp(320px, 58vh, 560px); }
   .empty-state, .loading-state { min-height: 300px; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
+  /* iOS/iPadOS Safari zooms the whole page in when a focused field is under
+     16px — which reads as the UI suddenly "enlarging". Keep inputs at 16px on
+     touch-sized screens to stop that. */
+  input, textarea { font-size: 16px; }
+  .overlay-canvas, .pdfpreview-canvas { max-width: 100%; height: auto; }
 }
 @media (max-width: 860px) {
   .docs-layout { grid-template-columns: 1fr; gap: 32px; }

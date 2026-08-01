@@ -59,6 +59,7 @@ export default function App() {
   /* ---------------- detection settings ---------------- */
   const [colors, setColors] = useState([[170, 0, 0]]); // default maroon; user can change
   const [dpi, setDpi] = useState(150);
+  const [detectStrength, setDetectStrength] = useState("balanced"); // precise | balanced | aggressive
   // 0 by default: titles are now dropped semantically (isChordCandidate), so we
   // no longer need to blank out the top of the page — doing that used to skip
   // real chords sitting just under the title. Users can still set a margin.
@@ -326,10 +327,11 @@ export default function App() {
       const arrayBuffer = await file.arrayBuffer();
       const useColors = colors;
 
-      const { boxes, numPages, usedOcr } = await detectChords(arrayBuffer, useColors, {
+      const { boxes, numPages, usedOcr, truncated } = await detectChords(arrayBuffer, useColors, {
         scale: Number(dpi) / 72,
         topMarginRatio: Number(topMargin),
         marginFirstPageOnly: marginFirstPage,
+        strength: detectStrength,
         onProgress: (msg, i, n) => {
           setLoadingText(msg);
           // Only ever move the bar forward.
@@ -339,6 +341,7 @@ export default function App() {
 
       const meta = {
         numPages,
+        truncated,
         semitones: semis,
         autoPreferFlats: preferFlats,
         fromKey, toKey, usedOcr,
@@ -533,7 +536,10 @@ export default function App() {
         {/* ================= LEFT: upload + settings ================= */}
         <section className="panel panel-settings" aria-label="Upload and settings">
           <div className="card">
-            <h2 className="card-title"><span className="step-num">1</span> Chord chart{files.length > 1 ? "s" : ""}</h2>
+            <div className="card-head">
+              <h2 className="card-title"><span className="step-num">1</span> Chord chart{files.length > 1 ? "s" : ""}</h2>
+              <p className="card-desc">Drop in a PDF chord chart or lead sheet — text-based or scanned.</p>
+            </div>
             <Dropzone file={file} onFiles={handleFiles} onRemove={handleRemoveFile} onDemo={loadDemo} />
             {files.length > 1 && (
               <ul className="file-queue" aria-label="Setlist queue">
@@ -552,7 +558,10 @@ export default function App() {
           </div>
 
           <div className="card">
-            <h2 className="card-title"><span className="step-num">2</span> Transposition</h2>
+            <div className="card-head">
+              <h2 className="card-title"><span className="step-num">2</span> Transposition</h2>
+              <p className="card-desc">Pick a target key on the wheel, or shift by a set number of semitones.</p>
+            </div>
 
             <div className="segmented" role="tablist" aria-label="Transposition mode">
               <button className={`segmented-btn${mode === "key" ? " is-active" : ""}`}
@@ -683,7 +692,7 @@ export default function App() {
                 </div>
 
                 <div className="field field-wide">
-                  <label className="field-label">Chord color{colors.length > 1 ? "s" : ""} <span className="hint">— scanned PDFs &amp; output ink</span></label>
+                  <label className="field-label">Chord color{colors.length > 1 ? "s" : ""} <span className="hint">— ink for the new chords</span></label>
                   <ColorPicker file={file} colors={colors} onColorsChange={setColors} />
                 </div>
               </div>
@@ -692,6 +701,19 @@ export default function App() {
             <div className="adv-section">
               <h3 className="adv-heading">Scanned-PDF detection</h3>
               <div className="field-grid">
+                <div className="field field-wide">
+                  <label className="field-label">Detection strength <span className="hint">— recall vs. precision for OCR</span></label>
+                  <div className="segmented segmented-mini" role="tablist" aria-label="Detection strength">
+                    {["precise", "balanced", "aggressive"].map((s) => (
+                      <button key={s} type="button" role="tab" aria-selected={detectStrength === s}
+                              className={`segmented-btn${detectStrength === s ? " is-active" : ""}`}
+                              onClick={() => setDetectStrength(s)}>
+                        {s[0].toUpperCase() + s.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="field">
                   <label className="field-label" htmlFor="dpiInput">Scan DPI</label>
                   <input id="dpiInput" type="number" className="select" value={dpi} onChange={(e) => setDpi(e.target.value)} />
@@ -799,6 +821,10 @@ export default function App() {
                 </span>
                 <span className="result-count">
                   <strong>{plan.length}</strong> chord symbol{plan.length === 1 ? "" : "s"} across {detectMeta.numPages} page{detectMeta.numPages === 1 ? "" : "s"}
+                  {(() => {
+                    const low = plan.filter((p) => (p.box?.confidence ?? 100) < 70).length;
+                    return low > 0 ? <span className="result-lowconf"> · {low} to review</span> : null;
+                  })()}
                 </span>
                 <div className="result-tools">
                   <button className="tool-btn" onClick={undo} disabled={!history.past.length} title="Undo (Ctrl+Z)">↩</button>
@@ -811,6 +837,13 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              {detectMeta.truncated ? (
+                <div className="warning-banner">
+                  This PDF is long, so only the first <strong>{detectMeta.truncated}</strong> of {detectMeta.numPages} pages
+                  were scanned to keep things responsive. Split the file to process the rest.
+                </div>
+              ) : null}
 
               {detectMeta.usedOcr ? (
                 <div className="warning-banner">

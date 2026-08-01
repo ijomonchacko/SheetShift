@@ -354,7 +354,10 @@
   margin-top: 24px;
   font-family: var(--ss-sans);
   font-size: 15px;
-  border-bottom: 1px solid var(--ss-ink);
+  /* `.ss-navsheet a` (more specific) was overriding the button's own text
+     color with --ss-ink, giving white-on-white in dark mode. Restore it. */
+  color: var(--_fg);
+  border-bottom: none;
   align-self: flex-start;
 }
 

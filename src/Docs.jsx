@@ -89,19 +89,25 @@ export default function Docs() {
             </p>
             <p>
               For scanned or image-only PDFs with no text layer, it falls back to
-              OCR. If your chords are a distinct color, it isolates those pixels
-              first (fastest and most precise — set the color in <em>Advanced</em>).
-              If they aren't — e.g. black chord symbols over black notation — it
-              reads the whole page and keeps the words that actually spell chords
-              and share the chord text size, so it still works with no color at all.
-              Every OCR read carries a confidence score, and low-confidence reads
-              are flagged for review. The chord color set in <em>Advanced</em> is
-              also the color SheetShift draws the transposed chords with.
+              OCR. The primary OCR engine is <strong>PP-OCR (PaddleOCR) running
+              in your browser via ONNX Runtime Web</strong> — a modern detector +
+              recognizer that reads small, dense notation text well. It finds every
+              text region on the page, then keeps only the ones that actually spell
+              a chord, share the chord text size, and sit together in a chord line
+              above the staff. This is color-independent, so it won't mistake staff
+              lines, note-name letters or other musical symbols for chords, and it
+              works whether the chords are black, maroon or any other color. If the
+              ONNX models can't load, it automatically falls back to a bundled
+              Tesseract engine so detection always works. Every read carries a
+              confidence score, and low-confidence reads are flagged for review.
+              The chord color set in <em>Advanced</em> is the color SheetShift
+              draws the transposed chords with.
             </p>
             <div className="docs-callout">
-              The first OCR run in a browser session downloads the language model
-              (~5–10&nbsp;MB). Everything after that runs fully offline — and with
-              the app installed as a PWA, so does the rest of SheetShift.
+              The ONNX OCR models (~11&nbsp;MB) and the Tesseract language model
+              are downloaded once per browser, then cached — after that OCR runs
+              fully offline, and with the app installed as a PWA, so does the rest
+              of SheetShift.
             </div>
           </section>
 
@@ -200,6 +206,11 @@ export default function Docs() {
                   <td>Chord color</td>
                   <td>The color the detector looks for on <em>scanned</em> PDFs, <em>and</em> the color new chords are drawn with. Text-layer PDFs don't use it. Use the eyedropper to match your chart.</td>
                   <td>Maroon</td>
+                </tr>
+                <tr>
+                  <td>Detection strength</td>
+                  <td>Trades recall vs. precision for scanned/image PDFs. <em>Precise</em> avoids stray false positives, <em>Aggressive</em> catches more borderline chords (more to review), <em>Balanced</em> is the middle ground.</td>
+                  <td>Balanced</td>
                 </tr>
                 <tr>
                   <td>Scan DPI</td>
